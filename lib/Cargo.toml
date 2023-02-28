@@ -1,0 +1,10 @@
+[package]
+name = "libdeathadder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+confy = "0.5.1"
+serde = { version = "1.0.152", features = ["derive"] }
+rgb = { version = "0.8.36", features = ["serde"] }
+rusb = "0.9"

@@ -1,0 +1,12 @@
+[package]
+name = "deathadder-rgb-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "deathadder-rgb-cli"
+path = "src/cli.rs"
+
+[dependencies]
+libdeathadder = { path = "../lib" }
+rgb = "0.8.36"

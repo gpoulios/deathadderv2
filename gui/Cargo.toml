@@ -1,0 +1,22 @@
+[package]
+name = "deathadder-rgb-gui"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "deathadder-rgb-gui"
+path = "src/gui.rs"
+
+[dependencies]
+libdeathadder = { path = "../lib" }
+winapi = "0.3.9"
+rgb = "0.8.36"
+
+[dependencies.windows]
+version = "0.44.0"
+features = [
+    "Win32_Foundation",
+    "Win32_UI_Controls_Dialogs",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Diagnostics_Debug"
+]

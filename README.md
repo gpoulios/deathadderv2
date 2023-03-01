@@ -8,16 +8,16 @@ Unfortunately, the device does not remember the color and it comes back with the
 
 ## Requirements
 
-Only requirement is to be using the libusb0 driver. 
+Only requirement is to be using the [libusb driver](https://github.com/libusb/libusb/wiki/Windows) (either WinUSB or libusb-win32).
 
-One way to install it is using [Zadig](https://zadig.akeo.ie/). You only need to change the entry "Razer DeathAdder V2 (Interface 3)". Use the spinner to select "libusb-win32 (vX.Y.Z)" and hit "Replace driver". In my case (Win11) it timed out while creating a restore point but it actually installed it.
+One way to install it is using [Zadig](https://zadig.akeo.ie/). You only need to change the entry "Razer DeathAdder V2 (Interface 3)". Use the spinner to select either "WinUSB (vXXX)" or "libusb-win32 (vX.Y.Z)" and hit "Replace driver". In my case (Win11) it timed out while creating a restore point but it actually installed it.
 
 ## Usage
 
 The tool comes in two forms, a console executable that you can use like so:
 
 ```
-> deathadder-rgb-cli aabbcc
+> deathadder-rgb-cli.exe aabbcc
 ```
 
 and a GUI app that will just pop up a color picker prompt (check the mouse while selecting). 
@@ -31,16 +31,16 @@ I have not found a way to retrieve the current color from the device so both app
 It is actually possible to set a different color on the scroll wheel (Synapse doesn't support this at the time of this writing). But there's a catch: most combinations don't work and I don't understand why. For sure it accepts combinations when the RGB components in both colors are the same even if in different order. For instance, the following will work:
 
 ```
-> deathadder-rgb-cli 1bc c1b
-> deathadder-rgb-cli 1155AA AA5511
-> deathadder-rgb-cli 10f243 f24310
+> deathadder-rgb-cli.exe 1bc c1b
+> deathadder-rgb-cli.exe 1155AA AA5511
+> deathadder-rgb-cli.exe 10f243 f24310
 ```
 
 ### Task Scheduler: re-applying the setting
 
 The GUI version also supports `--last` as the first argument in which case it sets the last applied color (either from cli or gui). This is useful if you want to schedule a task that does not pop up any windows.
 
-A tested setup is to set a trigger at log on, and for waking up from sleep, a custom trigger on Power-Troubleshooter with event ID 1 and delay 5 seconds. In Action tab use the absolute path to `deathadder-rgb-gui` and in the arguments put `--last`.
+A tested setup is to set a trigger at log on, and for waking up from sleep, a custom trigger on Power-Troubleshooter with event ID 1 and delay 5 seconds. In Action tab use the absolute path to `deathadder-rgb-gui.exe` and in the arguments put `--last`. I've added the (redacted) xml to the task I used in case you want to try importing it; just make sure to edit the required fields therein, it is not supposed to work as is.
 
 ## Technical
 

@@ -3,14 +3,14 @@
 use std::{mem::size_of, ffi::CStr, thread, sync::{Arc, Mutex}};
 use core::time::Duration;
 use windows::{
-    core::PCSTR,
+    core::{s, PCSTR},
     Win32::{
         Foundation::{HWND, WPARAM, LPARAM, RECT, COLORREF},
         UI::{
             WindowsAndMessaging::{
                 WM_INITDIALOG, WM_COMMAND, WM_PAINT, EN_UPDATE, GetWindowTextA,
                 SWP_NOSIZE, SWP_NOZORDER, GetWindowRect, GetDesktopWindow, 
-                GetClientRect, SetWindowPos,
+                GetClientRect, SetWindowPos, MessageBoxA, MB_OK, MB_ICONERROR
             },
             Controls::Dialogs::*
         },
@@ -165,13 +165,21 @@ fn main() {
     preview_thread.join().unwrap();
 
     // set the final value based on user's selection
-    if chosen.is_some() {
-        _ = set_color(chosen.unwrap(), None);
+    let result = if chosen.is_some() {
+        set_color(chosen.unwrap(), None)
     } else if cfg.is_some() {
         let cfgu = cfg.unwrap();
-        _ = set_color(cfgu.color, cfgu.wheel_color);
+        set_color(cfgu.color, cfgu.wheel_color)
     } else {
-        _ = set_color(initial, None);
+        set_color(initial, None)
+    };
+
+    // show error, if any
+    if result.is_err() {
+        unsafe {
+            let message = PCSTR::from_raw(result.unwrap().as_ptr());
+            MessageBoxA(HWND(0), message, s!("Error"), MB_OK | MB_ICONERROR);
+        }
     }
 }
 

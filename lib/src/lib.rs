@@ -2,9 +2,7 @@ pub mod core {
     use std::{num::ParseIntError, fmt, error, default::Default};
     use serde::{Serialize, Deserialize};
     use confy::{ConfyError};
-    use rgb::{
-        RGB8, FromSlice
-    };
+    use rgb::{RGB8, FromSlice};
 
     #[derive(Debug, Serialize, Deserialize)]
     pub struct Config {

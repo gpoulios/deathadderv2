@@ -8,9 +8,11 @@ Unfortunately, the device does not remember the color and it comes back with the
 
 ## Requirements
 
-Only requirement is to be using the [libusb driver](https://github.com/libusb/libusb/wiki/Windows) (either WinUSB or libusb-win32).
+This is not for supposed to be for Linux hosts. If you are on Linux, see [openrazer](https://github.com/openrazer/openrazer).
 
-One way to install it is using [Zadig](https://zadig.akeo.ie/). You only need to change the entry "Razer DeathAdder V2 (Interface 3)". Use the spinner to select either "WinUSB (vXXX)" or "libusb-win32 (vX.Y.Z)" and hit "Replace driver". In my case (Win11) it timed out while creating a restore point but it actually installed it.
+Windows users, only requirement is to be using the [libusb driver](https://github.com/libusb/libusb/wiki/Windows) (either WinUSB or libusb-win32).
+
+One way to install it is using [Zadig](https://zadig.akeo.ie/). You only need to do this once. Change the entry "Razer DeathAdder V2 (Interface 3)". Use the spinner to select either "WinUSB (vXXX)" or "libusb-win32 (vX.Y.Z)" and hit "Replace driver". In my case (Win11) it timed out while creating a restore point but it actually installed it.
 
 ## Usage
 
@@ -35,6 +37,8 @@ It is actually possible to set a different color on the scroll wheel (Synapse do
 > deathadder-rgb-cli.exe 1155AA AA5511
 > deathadder-rgb-cli.exe 10f243 f24310
 ```
+
+Edit: apparently I'm missing a simple XOR kind-of checksum calculation in the USB report packet, which, for the following combinations, ends up the same (!). Thanks [openrazer](https://github.com/openrazer/openrazer).
 
 ### Task Scheduler: re-applying the setting
 

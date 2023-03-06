@@ -1,12 +1,16 @@
 [package]
 name = "deathadder-rgb-cli"
-version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+version = { workspace = true }
+authors = { workspace = true }
+description = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
 
 [[bin]]
 name = "deathadder-rgb-cli"
 path = "src/cli.rs"
 
 [dependencies]
-libdeathadder = { path = "../lib" }
-rgb = "0.8.36"
+librazer = { path = "../lib" }
+rgb = { workspace = true }

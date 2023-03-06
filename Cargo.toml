@@ -1,5 +1,15 @@
 [workspace]
+members = ["lib", "cli", "gui"]
+default-members = ["gui"]
 
-members = [
-    "lib", "cli", "gui"
-]
+[workspace.package]
+edition = "2021"
+version = "0.2.0"
+authors = ["George Poulios"]
+description = "A utility to control Razer DeathAdder v2 on Windows"
+readme = "./README.md"
+repository = "https://github.com/gpoulios/deathadderv2"
+license = "GPLv2"
+
+[workspace.dependencies]
+rgb = { version = "0.8.36" }

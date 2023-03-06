@@ -1,16 +1,20 @@
 [package]
 name = "deathadder-rgb-gui"
-version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+version = { workspace = true }
+authors = { workspace = true }
+description = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
 
 [[bin]]
 name = "deathadder-rgb-gui"
 path = "src/gui.rs"
 
 [dependencies]
-libdeathadder = { path = "../lib" }
+librazer = { path = "../lib" }
 winapi = "0.3.9"
-rgb = "0.8.36"
+rgb = { workspace = true }
 
 [dependencies.windows]
 version = "0.44.0"

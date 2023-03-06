@@ -14,25 +14,14 @@ use windows::{
             },
             Controls::Dialogs::*
         },
-        System::Diagnostics::Debug::OutputDebugStringA
     },
 };
 use rgb::RGB8;
-use libdeathadder::core::{rgb_from_hex, Config};
-use libdeathadder::v2::{preview_color, set_color};
+use librazer::cfg::Config;
+use librazer::device::{DeathAdderV2, RazerMouse};
 
 
 /*
- * This utility operates in either command line mode or UI mode.
- * 
- * In command line mode the colors are specified as cmd line arguments
- * and no UI is shown. The reason for this mode is to be able to automate or
- * schedule this tool using the task scheduler or smth. If this were a true
- * console application (without the #![windows_subsystem = "windows"] directive
- * above), in such scenarios (e.g. scheduled task) a console window would pop
- * up for a split second. We abandon console support to avoid that, and we
- * log error messages to the debugger using the OutputDebugString API.
- * 
  * In UI mode we show a ChooseColor dialog and let the user pick the color
  * while previewing the current selection on the mouse itself.
  * 
@@ -57,75 +46,48 @@ static RGB_TO_SET: Mutex<Option<RGB8>> = Mutex::new(None);
  * Log messages to the debugger using OutputDebugString (only for command line
  * invocation). Use DebugView by Mark Russinovich to view
  */
-macro_rules! dbglog {
-    ($($args: tt)*) => {
-        unsafe {
-            let msg = format!($($args)*);
-            OutputDebugStringA(PCSTR::from_raw(msg.as_ptr()));
-        }
-    }
-}
+// macro_rules! dbglog {
+//     ($($args: tt)*) => {
+//         unsafe {
+//             let msg = format!($($args)*);
+//             OutputDebugStringA(PCSTR::from_raw(msg.as_ptr()));
+//         }
+//     }
+// }
 
-macro_rules! dbgpanic {
+// macro_rules! dbgpanic {
+//     ($($args: tt)*) => {
+//         unsafe {
+//             let msg = format!($($args)*);
+//             OutputDebugStringA(PCSTR::from_raw(msg.as_ptr()));
+//             panic!("{}", msg);
+//         }
+//     }
+// }
+
+macro_rules! msgboxpanic {
     ($($args: tt)*) => {
         unsafe {
             let msg = format!($($args)*);
-            OutputDebugStringA(PCSTR::from_raw(msg.as_ptr()));
+            let msg_ptr = PCSTR::from_raw(msg.as_ptr());
+            MessageBoxA(HWND(0), msg_ptr, s!("Error"), MB_OK | MB_ICONERROR);
             panic!("{}", msg);
         }
     }
 }
 
 fn main() {
-
-    /*
-     * Command line mode if at least one argument
-     */
-    let args: Vec<String> = std::env::args().collect();
-
-    let parse_arg = |input: &str| -> RGB8 {
-        match rgb_from_hex(input) {
-            Ok(rgb) => rgb,
-            Err(e) => { dbgpanic!("argument '{}' should be in the \
-                form [0x/#]RGB[h] or [0x/#]RRGGBB[h] where R, G, and B are hex \
-                digits: {}", input, e); } 
-        }
-    };
-
-    if args.len() > 1 {
-        let (color, wheel_color) = if args[1] == "--last" {
-            match Config::load() {
-                Some(cfg) => (cfg.color, cfg.wheel_color),
-                None => dbgpanic!("failed to load configuration; please specify \
-                    arguments manually")
-            }
-        } else {
-            (parse_arg(args[1].as_ref()), if args.len() > 2 {
-                Some(parse_arg(args[2].as_ref()))
-            } else {
-                None
-            })
-        };
-
-        match set_color(color, wheel_color) {
-            Ok(msg) => dbglog!("{}", msg),
-            Err(e) => dbgpanic!("Failed to set color(s): {}", e)
-        }
-        return;
-    };
-
-
-    /*
-     * no arguments; UI mode
-     */
+    let dav2 = DeathAdderV2::new()
+        .unwrap_or_else(|e| msgboxpanic!("Error opening device: {}", e));
 
     // this will be the master signal to end the device preview thread
     let keep_previewing = Arc::new(Mutex::new(true));
-
+    let dav2_rc = Arc::new(dav2);
     let preview_thread = {
 
         // make a copy of the master signal and loop on it
         let keep_previewing = Arc::clone(&keep_previewing);
+        let dav2_rc = Arc::clone(&dav2_rc);
         thread::spawn(move || {
 
             // save some resources by setting each color once
@@ -134,11 +96,18 @@ fn main() {
             while *keep_previewing.lock().unwrap() {
 
                 match *RGB_TO_SET.lock().unwrap() {
+                    // same as last set color: do nothing
                     same if same == last_set => (),
+
+                    // would like this to be matched in arm above but it doesn't
                     None => (),
+
+                    // some new color to preview
                     Some(rgb) => {
-                        _ = preview_color(rgb, None);
-                        last_set = Some(rgb);
+                        match (*dav2_rc).preview_static(rgb, rgb) {
+                            Ok(()) => last_set = Some(rgb),
+                            Err(_) => break
+                        }
                     },
                 }
 
@@ -164,23 +133,22 @@ fn main() {
     *keep_previewing.lock().unwrap() = false;
     preview_thread.join().unwrap();
 
-    // set the final value based on user's selection
-    let result = if chosen.is_some() {
-        set_color(chosen.unwrap(), None)
-    } else if cfg.is_some() {
-        let cfgu = cfg.unwrap();
-        set_color(cfgu.color, cfgu.wheel_color)
+    // final value based on user's choice 
+    let (logo_rgb, scroll_rgb) = if chosen.is_some() {
+        (chosen.unwrap(), chosen.unwrap())
     } else {
-        set_color(initial, None)
+        (initial, initial)
     };
 
-    // show error, if any
-    if result.is_err() {
-        unsafe {
-            let message = PCSTR::from_raw(result.unwrap().as_ptr());
-            MessageBoxA(HWND(0), message, s!("Error"), MB_OK | MB_ICONERROR);
-        }
-    }
+    _ = (*dav2_rc).set_logo_color(logo_rgb)
+        .map_err(|e| msgboxpanic!("Error setting logo color: {}", e))
+        .and_then(|_| (*dav2_rc).set_scroll_color(scroll_rgb))
+        .map_err(|e| msgboxpanic!("Error setting scroll wheel color: {}", e));
+
+    _ = Config {
+        color: logo_rgb,
+        scroll_color: Some(scroll_rgb),
+    }.save().map_err(|e| msgboxpanic!("Failed to save config: {}", e));
 }
 
 /*

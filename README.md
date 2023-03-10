@@ -23,7 +23,7 @@ The tool comes in two forms, a console executable that you can use like so:
 
 where *COLOR above should be in hex [0x/#]RGB[h] or [0x/#]RRGGBB[h] format.
 If no arguments are specified the saved color will be applied.
-If scroll wheel color is not specified, the specified color 
+If scroll wheel color is not specified, the specified color
 will be applied to both the logo and the scroll wheel.
 ```
 

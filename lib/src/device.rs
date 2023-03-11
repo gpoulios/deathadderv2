@@ -9,7 +9,7 @@ use crate::common::*;
 pub(crate) const USB_VENDOR_ID_RAZER: u16 = 0x1532;
 pub(crate) const USB_DEVICE_ID_RAZER_DEATHADDER_V2: u16 = 0x0084;
 
-/// A wrapper around rusb:Device<GlobalContext>
+/// A wrapper for rusb:Device<GlobalContext> with Display, and Default
 pub struct UsbDevice(Option<Device<GlobalContext>>);
 
 impl Deref for UsbDevice {
@@ -20,11 +20,32 @@ impl Deref for UsbDevice {
     }
 }
 
+fn get_device_name<C: UsbContext>(handle: &DeviceHandle<C>) -> String {
+    let dev = handle.device();
+    match dev.device_descriptor() {
+        Ok(dd) => {
+            let serial = handle.read_serial_number_string_ascii(&dd)
+                                        .unwrap_or_default();
+            let product = handle.read_product_string_ascii(&dd)
+                                        .unwrap_or_default();
+            format!("{}{}{}", product, if serial.len() > 0 {" "} else {""}, serial)
+        },
+        Err(_) => String::new(),
+    }
+}
+
 impl fmt::Display for UsbDevice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UsbDevice(Some(dev)) => 
-                write!(f, "{:03}-{:03}", dev.bus_number(), dev.address()),
+            UsbDevice(Some(dev)) => {
+                let devname = match dev.open() {
+                    Ok(h) => {
+                        get_device_name(&h)
+                    },
+                    Err(_) => String::new(),
+                };
+                write!(f, "{} ({}-{})", devname, dev.bus_number(), dev.address())
+            },
             UsbDevice(None) => write!(f, "None")
         }
     }
@@ -93,7 +114,9 @@ pub trait RazerDevice<C: UsbContext>: fmt::Display {
 
     fn pid(&self) -> u16;    
 
-    fn name(&self) -> String;
+    fn name(&self) -> String {
+        get_device_name(self.handle())
+    }
 
     fn handle(&self) -> &DeviceHandle<C>;
 
@@ -203,7 +226,7 @@ fn razer_dev_default_fmt<C:UsbContext, R: RazerDevice<C>>(
     f: &mut fmt::Formatter<'_>
 ) -> fmt::Result {
     let serial = dev.get_serial().unwrap_or(String::from("<couldn't get serial>"));
-    write!(f, "Razer {} ({})", dev.name(), serial)
+    write!(f, "{} ({})", dev.name(), serial)
 }
 
 pub struct DeathAdderV2<C: UsbContext> {
@@ -212,10 +235,6 @@ pub struct DeathAdderV2<C: UsbContext> {
 
 impl<C: UsbContext> RazerDevice<C> for DeathAdderV2<C> {
     fn pid(&self) -> u16 { USB_DEVICE_ID_RAZER_DEATHADDER_V2 }
-
-    fn name(&self) -> String {
-        String::from("DeathAdder v2")
-    }
 
     fn handle(&self) -> &DeviceHandle<C> {
         &self.handle

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 use std::fmt;
-use rusb::{Context, UsbContext, DeviceHandle, Device, DeviceList, GlobalContext};
+use rusb::{Context, UsbContext, DeviceHandle, Device, DeviceList};
 use rgb::RGB8;
 
 use crate::error::{USBResult, USBError};
@@ -9,18 +9,18 @@ use crate::common::*;
 pub(crate) const USB_VENDOR_ID_RAZER: u16 = 0x1532;
 pub(crate) const USB_DEVICE_ID_RAZER_DEATHADDER_V2: u16 = 0x0084;
 
-/// A wrapper for rusb:Device<GlobalContext> with Display, and Default
-pub struct UsbDevice(Option<Device<GlobalContext>>);
+/// A wrapper for rusb:Device<Context> with Display, and Default
+pub struct UsbDevice(Option<Device<Context>>);
 
 impl Deref for UsbDevice {
-    type Target = Option<Device<GlobalContext>>;
+    type Target = Option<Device<Context>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-fn get_device_name<C: UsbContext>(handle: &DeviceHandle<C>) -> String {
+fn get_device_name(handle: &DeviceHandle<Context>) -> String {
     let dev = handle.device();
     match dev.device_descriptor() {
         Ok(dd) => {
@@ -60,7 +60,8 @@ impl Default for UsbDevice {
 impl UsbDevice {
     /// List all usb devices
     pub fn list() -> USBResult<Vec<UsbDevice>> {
-        let device_list = DeviceList::new()?;
+        let ctx = Context::new()?;
+        let device_list = DeviceList::new_with_context(ctx)?;
         let res = device_list.iter()
             .map(|d| UsbDevice(Some(d)))
             .collect::<Vec<UsbDevice>>();
@@ -69,7 +70,8 @@ impl UsbDevice {
 
     /// List all usb devices of the specified vendor
     pub fn by_vendor(vid: u16) -> USBResult<Vec<UsbDevice>> {
-        let device_list = DeviceList::new()?;
+        let ctx = Context::new()?;
+        let device_list = DeviceList::new_with_context(ctx)?;
         let res = device_list.iter()
             .filter_map(|device| {
                 match device.device_descriptor() {
@@ -87,7 +89,8 @@ impl UsbDevice {
 
     /// List all usb devices of the specified vendor and with the specified product ID
     pub fn by_product(vid: u16, pid: u16) -> USBResult<Vec<UsbDevice>> {
-        let device_list = DeviceList::new()?;
+        let ctx = Context::new()?;
+        let device_list = DeviceList::new_with_context(ctx)?;
         let res = device_list.iter()
             .filter_map(|device| {
                 match device.device_descriptor() {
@@ -105,7 +108,7 @@ impl UsbDevice {
     }
 }
 
-pub trait RazerDevice<C: UsbContext>: fmt::Display {
+pub trait RazerDevice: fmt::Display {
     fn list() -> USBResult<Vec<UsbDevice>> {
         UsbDevice::by_vendor(USB_VENDOR_ID_RAZER)
     }
@@ -118,7 +121,7 @@ pub trait RazerDevice<C: UsbContext>: fmt::Display {
         get_device_name(self.handle())
     }
 
-    fn handle(&self) -> &DeviceHandle<C>;
+    fn handle(&self) -> &DeviceHandle<Context>;
 
     fn default_tx_id(&self) -> u8;
 
@@ -141,7 +144,7 @@ pub trait RazerDevice<C: UsbContext>: fmt::Display {
 }
 
 /// A default implementation; Some mice need specialization
-pub trait RazerMouse<C: UsbContext>: RazerDevice<C> {
+pub trait RazerMouse: RazerDevice {
     fn get_dpi(&self) -> USBResult<(u16, u16)> {
         let mut request = razer_chroma_misc_get_dpi_xy(LedStorage::NoStore);
         let response = self.send_payload(&mut request)?;
@@ -221,22 +224,19 @@ pub trait RazerMouse<C: UsbContext>: RazerDevice<C> {
 }
 
 /// A default "to_string()" implementation for all RazerDevices
-fn razer_dev_default_fmt<C:UsbContext, R: RazerDevice<C>>(
-    dev: &R, 
-    f: &mut fmt::Formatter<'_>
-) -> fmt::Result {
+fn razer_dev_default_fmt<T: RazerDevice>(dev: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let serial = dev.get_serial().unwrap_or(String::from("<couldn't get serial>"));
     write!(f, "{} ({})", dev.name(), serial)
 }
 
-pub struct DeathAdderV2<C: UsbContext> {
-    handle: DeviceHandle<C>,
+pub struct DeathAdderV2 {
+    handle: DeviceHandle<Context>,
 }
 
-impl<C: UsbContext> RazerDevice<C> for DeathAdderV2<C> {
+impl RazerDevice for DeathAdderV2 {
     fn pid(&self) -> u16 { USB_DEVICE_ID_RAZER_DEATHADDER_V2 }
 
-    fn handle(&self) -> &DeviceHandle<C> {
+    fn handle(&self) -> &DeviceHandle<Context> {
         &self.handle
     }
 
@@ -245,7 +245,7 @@ impl<C: UsbContext> RazerDevice<C> for DeathAdderV2<C> {
     }
 }
 
-impl<C: UsbContext> RazerMouse<C> for DeathAdderV2<C> {
+impl RazerMouse for DeathAdderV2 {
     fn preview_static(&self, logo_color: RGB8, scroll_color: RGB8) -> USBResult<()> {
         let mut request = razer_naga_trinity_effect_static(
             LedStorage::NoStore, LedEffect::Static, logo_color, scroll_color);
@@ -254,13 +254,13 @@ impl<C: UsbContext> RazerMouse<C> for DeathAdderV2<C> {
     }
 }
 
-impl<C: UsbContext> fmt::Display for DeathAdderV2<C> {
+impl fmt::Display for DeathAdderV2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         razer_dev_default_fmt(self, f)
     }
 }
 
-impl DeathAdderV2<Context> {
+impl DeathAdderV2 {
     pub fn new() -> USBResult<Self> {
         let ctx = Context::new()?;
         let handle = match ctx.open_device_with_vid_pid(
@@ -270,11 +270,10 @@ impl DeathAdderV2<Context> {
         }?;
         Ok(Self { handle: handle })
     }
-}
 
-impl DeathAdderV2<GlobalContext> {
     pub fn list() -> USBResult<Vec<UsbDevice>> {
-        UsbDevice::by_product(USB_VENDOR_ID_RAZER, USB_DEVICE_ID_RAZER_DEATHADDER_V2)
+        UsbDevice::by_product(
+            USB_VENDOR_ID_RAZER, USB_DEVICE_ID_RAZER_DEATHADDER_V2)
     }
 
     pub fn from(maybe_device: &UsbDevice) -> USBResult<Self> {

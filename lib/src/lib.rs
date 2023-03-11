@@ -4,7 +4,7 @@ pub mod device;
 
 pub mod common {
     use std::{num::ParseIntError, thread, time::Duration};
-    use rusb::{Context, DeviceHandle};
+    use rusb::{Context, DeviceHandle, UsbContext};
     use core::mem::{size_of, size_of_val, MaybeUninit};
     use rgb::{RGB8, FromSlice};
     use crate::error::{ParseRGBError, USBResult, USBError};
@@ -270,8 +270,8 @@ pub mod common {
 
     }
 
-    fn razer_send_control_msg(
-        usb_dev: &DeviceHandle<Context>,
+    fn razer_send_control_msg<C: UsbContext>(
+        usb_dev: &DeviceHandle<C>,
         data: &RazerReport,
         report_index: u16
     ) -> USBResult<usize> {
@@ -289,8 +289,8 @@ pub mod common {
         Ok(written)
     }
 
-    fn razer_get_usb_response(
-        usb_dev: &DeviceHandle<Context>,
+    fn razer_get_usb_response<C: UsbContext>(
+        usb_dev: &DeviceHandle<C>,
         report_index: u16,
         request_report: &RazerReport,
         response_index: u16
@@ -318,16 +318,16 @@ pub mod common {
         Ok(RazerReport::unpack(&buffer).unwrap())
     }
 
-    fn razer_get_report(
-        usb_dev: &DeviceHandle<Context>,
+    fn razer_get_report<C: UsbContext>(
+        usb_dev: &DeviceHandle<C>,
         request: &RazerReport
     ) -> USBResult<RazerReport> {
         let index = 0u16;
         razer_get_usb_response(usb_dev, index, request, index)
     }
 
-    pub(crate) fn razer_send_payload(
-        usb_dev: &DeviceHandle<Context>,
+    pub(crate) fn razer_send_payload<C: UsbContext>(
+        usb_dev: &DeviceHandle<C>,
         request: &mut RazerReport
     ) -> USBResult<RazerReport> {
         request.update_crc();

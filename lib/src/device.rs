@@ -1,21 +1,101 @@
-use std::{time::Duration, fmt};
-use rusb::{Context, UsbContext, DeviceHandle};
+use std::ops::Deref;
+use std::fmt;
+use rusb::{Context, UsbContext, DeviceHandle, Device, DeviceList, GlobalContext};
 use rgb::RGB8;
-use crate::cfg::Config;
+
 use crate::error::{USBResult, USBError};
 use crate::common::*;
 
 pub(crate) const USB_VENDOR_ID_RAZER: u16 = 0x1532;
 pub(crate) const USB_DEVICE_ID_RAZER_DEATHADDER_V2: u16 = 0x0084;
 
-pub trait RazerDevice: fmt::Display {
+/// A wrapper around rusb:Device<GlobalContext>
+pub struct UsbDevice(Option<Device<GlobalContext>>);
+
+impl Deref for UsbDevice {
+    type Target = Option<Device<GlobalContext>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl fmt::Display for UsbDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UsbDevice(Some(dev)) => 
+                write!(f, "{:03}-{:03}", dev.bus_number(), dev.address()),
+            UsbDevice(None) => write!(f, "None")
+        }
+    }
+}
+
+impl Default for UsbDevice {
+    fn default() -> Self {
+        UsbDevice(None)
+    }
+}
+
+impl UsbDevice {
+    /// List all usb devices
+    pub fn list() -> USBResult<Vec<UsbDevice>> {
+        let device_list = DeviceList::new()?;
+        let res = device_list.iter()
+            .map(|d| UsbDevice(Some(d)))
+            .collect::<Vec<UsbDevice>>();
+        Ok(res)
+    }
+
+    /// List all usb devices of the specified vendor
+    pub fn by_vendor(vid: u16) -> USBResult<Vec<UsbDevice>> {
+        let device_list = DeviceList::new()?;
+        let res = device_list.iter()
+            .filter_map(|device| {
+                match device.device_descriptor() {
+                    Ok(descr) => if descr.vendor_id() == vid {
+                        Some(UsbDevice(Some(device)))
+                    } else {
+                        None
+                    },
+                    Err(_) => None
+                }
+            })
+            .collect::<Vec<UsbDevice>>();
+        Ok(res)
+    }
+
+    /// List all usb devices of the specified vendor and with the specified product ID
+    pub fn by_product(vid: u16, pid: u16) -> USBResult<Vec<UsbDevice>> {
+        let device_list = DeviceList::new()?;
+        let res = device_list.iter()
+            .filter_map(|device| {
+                match device.device_descriptor() {
+                    Ok(descr) => 
+                        if descr.vendor_id() == vid && descr.product_id() == pid {
+                            Some(UsbDevice(Some(device)))
+                        } else {
+                            None
+                        },
+                    Err(_) => None
+                }
+            })
+            .collect::<Vec<UsbDevice>>();
+        Ok(res)
+    }
+}
+
+pub trait RazerDevice<C: UsbContext>: fmt::Display {
+    fn list() -> USBResult<Vec<UsbDevice>> {
+        UsbDevice::by_vendor(USB_VENDOR_ID_RAZER)
+    }
+
     fn vid(&self) -> u16 { USB_VENDOR_ID_RAZER }
 
     fn pid(&self) -> u16;    
 
     fn name(&self) -> String;
 
-    fn handle(&self) -> &DeviceHandle<Context>;
+    fn handle(&self) -> &DeviceHandle<C>;
 
     fn default_tx_id(&self) -> u8;
 
@@ -38,7 +118,7 @@ pub trait RazerDevice: fmt::Display {
 }
 
 /// A default implementation; Some mice need specialization
-pub trait RazerMouse: RazerDevice {
+pub trait RazerMouse<C: UsbContext>: RazerDevice<C> {
     fn get_dpi(&self) -> USBResult<(u16, u16)> {
         let mut request = razer_chroma_misc_get_dpi_xy(LedStorage::NoStore);
         let response = self.send_payload(&mut request)?;
@@ -118,23 +198,26 @@ pub trait RazerMouse: RazerDevice {
 }
 
 /// A default "to_string()" implementation for all RazerDevices
-fn razer_dev_default_fmt<T: RazerDevice>(dev: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+fn razer_dev_default_fmt<C:UsbContext, R: RazerDevice<C>>(
+    dev: &R, 
+    f: &mut fmt::Formatter<'_>
+) -> fmt::Result {
     let serial = dev.get_serial().unwrap_or(String::from("<couldn't get serial>"));
     write!(f, "Razer {} ({})", dev.name(), serial)
 }
 
-pub struct DeathAdderV2 {
-    handle: DeviceHandle<Context>,
+pub struct DeathAdderV2<C: UsbContext> {
+    handle: DeviceHandle<C>,
 }
 
-impl RazerDevice for DeathAdderV2 {
+impl<C: UsbContext> RazerDevice<C> for DeathAdderV2<C> {
     fn pid(&self) -> u16 { USB_DEVICE_ID_RAZER_DEATHADDER_V2 }
 
     fn name(&self) -> String {
         String::from("DeathAdder v2")
     }
 
-    fn handle(&self) -> &DeviceHandle<Context> {
+    fn handle(&self) -> &DeviceHandle<C> {
         &self.handle
     }
 
@@ -143,7 +226,7 @@ impl RazerDevice for DeathAdderV2 {
     }
 }
 
-impl RazerMouse for DeathAdderV2 {
+impl<C: UsbContext> RazerMouse<C> for DeathAdderV2<C> {
     fn preview_static(&self, logo_color: RGB8, scroll_color: RGB8) -> USBResult<()> {
         let mut request = razer_naga_trinity_effect_static(
             LedStorage::NoStore, LedEffect::Static, logo_color, scroll_color);
@@ -152,13 +235,13 @@ impl RazerMouse for DeathAdderV2 {
     }
 }
 
-impl fmt::Display for DeathAdderV2 {
+impl<C: UsbContext> fmt::Display for DeathAdderV2<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         razer_dev_default_fmt(self, f)
     }
 }
 
-impl DeathAdderV2 {
+impl DeathAdderV2<Context> {
     pub fn new() -> USBResult<Self> {
         let ctx = Context::new()?;
         let handle = match ctx.open_device_with_vid_pid(
@@ -170,55 +253,17 @@ impl DeathAdderV2 {
     }
 }
 
-pub fn preview_color(color: RGB8, wheel_color: Option<RGB8>) -> Result<String, String> {
-    _set_color(color, wheel_color, false)
-}
-
-pub fn set_color(color: RGB8, wheel_color: Option<RGB8>) -> Result<String, String> {
-    _set_color(color, wheel_color, true)
-}
-
-fn _set_color(color: RGB8, wheel_color: Option<RGB8>, save: bool) -> Result<String, String> {
-    let vid = 0x1532;
-    let pid = 0x0084;
-
-    let timeout = Duration::from_secs(1);
-
-    // save regardless of USB result and fail silently
-    if save {
-        _ = Config {color, scroll_color: wheel_color}.save();
+impl DeathAdderV2<GlobalContext> {
+    pub fn list() -> USBResult<Vec<UsbDevice>> {
+        UsbDevice::by_product(USB_VENDOR_ID_RAZER, USB_DEVICE_ID_RAZER_DEATHADDER_V2)
     }
 
-    match Context::new() {
-        Ok(context) => match context.open_device_with_vid_pid(vid, pid) {
-            Some(handle) => {
-
-                let mut packet: Vec<u8> = vec![
-                    // the start (no idea what they are)
-                    0x00, 0x1f, 0x00, 0x00, 0x00, 0x0b, 0x0f, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01,
-
-                    // wheel RGB (3B) | body RGB (3B)
-                    0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-
-                    // the trailer (no idea what they are either)
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00
-                ];
-                
-                packet.splice(16..19, color.iter());
-                packet.splice(13..16, wheel_color.unwrap_or(color).iter());
-                
-                match handle.write_control(0x21, 9, 0x300, 0,
-                    &packet, timeout) {
-                        Ok(len) => Ok(format!("written {} bytes", len)),
-                        Err(e) => Err(format!("could not write ctrl transfer: {}", e))
-                }
-            }
-            None => Err(format!("could not find device {:04x}:{:04x}", vid, pid)),
-        },
-        Err(e) => Err(format!("could not initialize libusb: {}", e)),
+    pub fn from(maybe_device: &UsbDevice) -> USBResult<Self> {
+        let device = match maybe_device.as_ref() {
+            Some(device) => Ok(device),
+            None => Err(USBError::DeviceNotFound),
+        }?;
+        let handle = device.open()?;
+        Ok(Self { handle: handle })
     }
 }

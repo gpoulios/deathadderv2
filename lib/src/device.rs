@@ -200,8 +200,9 @@ pub trait RazerMouse: RazerDevice {
     }
 
     fn set_logo_brightness(&self, brightness: u8) -> USBResult<()> {
+        let b = (255.0 * brightness.clamp(0, 100) as f32 / 100.0).round() as u8;
         let mut request = razer_chroma_extended_matrix_brightness(
-            LedStorage::VarStore, Led::Logo, brightness);
+            LedStorage::VarStore, Led::Logo, b);
         self.send_payload(&mut request)?;
         Ok(())
     }
@@ -215,8 +216,9 @@ pub trait RazerMouse: RazerDevice {
     }
 
     fn set_scroll_brightness(&self, brightness: u8) -> USBResult<()> {
+        let b = (255.0 * brightness.clamp(0, 100) as f32 / 100.0).round() as u8;
         let mut request = razer_chroma_extended_matrix_brightness(
-            LedStorage::VarStore, Led::ScrollWheel, brightness);
+            LedStorage::VarStore, Led::ScrollWheel, b);
         self.send_payload(&mut request)?;
         Ok(())
     }
@@ -276,8 +278,8 @@ impl DeathAdderV2 {
             USB_VENDOR_ID_RAZER, USB_DEVICE_ID_RAZER_DEATHADDER_V2)
     }
 
-    pub fn from(maybe_device: &UsbDevice) -> USBResult<Self> {
-        let device = match maybe_device.as_ref() {
+    pub fn from(device: &UsbDevice) -> USBResult<Self> {
+        let device = match device.as_ref() {
             Some(device) => Ok(device),
             None => Err(USBError::DeviceNotFound),
         }?;

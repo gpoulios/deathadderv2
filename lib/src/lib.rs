@@ -449,7 +449,7 @@ pub mod common {
         RazerReport::new(0x0F, 0x04, &[
             variable_storage as u8,
             led as u8,
-            (255.0 * brightness.clamp(0, 100) as f32 / 100.0).round() as u8,
+            brightness, // in the [0-255] range
         ])
     }
 

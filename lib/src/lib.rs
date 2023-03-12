@@ -3,8 +3,8 @@ pub mod error;
 pub mod device;
 
 pub mod common {
-    use std::{num::ParseIntError, thread, time::Duration};
-    use rusb::{Context, DeviceHandle, UsbContext};
+    use std::{num::ParseIntError, thread, time::Duration, fmt::Display};
+    use rusb::{DeviceHandle, UsbContext};
     use core::mem::{size_of, size_of_val, MaybeUninit};
     use rgb::{RGB8, FromSlice};
     use crate::error::{ParseRGBError, USBResult, USBError};
@@ -124,12 +124,18 @@ pub mod common {
     }
 
     #[repr(u8)]
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, PartialEq)]
     pub enum PollingRate {
         Hz1000 = 0x01,
         Hz500 = 0x02,
         Hz250 = 0x04,
         Hz125 = 0x08,
+    }
+
+    impl Default for PollingRate {
+        fn default() -> Self {
+            PollingRate::Hz500
+        }
     }
 
     impl TryFrom<u8> for PollingRate {
@@ -143,6 +149,23 @@ pub mod common {
                 x if x == PollingRate::Hz125 as u8 => Ok(PollingRate::Hz125),
                 _ => Err(flag),
             }
+        }
+    }
+
+    impl Display for PollingRate {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                PollingRate::Hz1000 => write!(f, "1000 Hz"),
+                PollingRate::Hz500 => write!(f, "500 Hz"),
+                PollingRate::Hz250 => write!(f, "250 Hz"),
+                PollingRate::Hz125 => write!(f, "125 Hz"),
+            }
+        }
+    }
+
+    impl PollingRate {
+        pub fn all() -> Vec<Self> {
+            vec![PollingRate::Hz125, PollingRate::Hz250, PollingRate::Hz500, PollingRate::Hz1000]
         }
     }
 

@@ -143,8 +143,16 @@ pub trait RazerDevice: fmt::Display {
     }
 }
 
-/// A default implementation; Some mice need specialization
+/// A default implementation; Most mice would need some specialization
 pub trait RazerMouse: RazerDevice {
+    fn min_dpi(&self) -> u16 {
+        100
+    }
+
+    fn max_dpi(&self) -> u16 {
+        30000
+    }
+
     fn get_dpi(&self) -> USBResult<(u16, u16)> {
         let mut request = razer_chroma_misc_get_dpi_xy(LedStorage::NoStore);
         let response = self.send_payload(&mut request)?;
@@ -156,6 +164,9 @@ pub trait RazerMouse: RazerDevice {
     }
 
     fn set_dpi(&self, dpi_x: u16, dpi_y: u16) -> USBResult<()> {
+        let dpi_x = dpi_x.clamp(self.min_dpi(), self.max_dpi());
+        let dpi_y = dpi_y.clamp(self.min_dpi(), self.max_dpi());
+
         let mut request = razer_chroma_misc_set_dpi_xy(
             LedStorage::NoStore, dpi_x, dpi_y);
         self.send_payload(&mut request)?;
@@ -248,6 +259,10 @@ impl RazerDevice for DeathAdderV2 {
 }
 
 impl RazerMouse for DeathAdderV2 {
+    fn max_dpi(&self) -> u16 {
+        20000
+    }
+
     fn preview_static(&self, logo_color: RGB8, scroll_color: RGB8) -> USBResult<()> {
         let mut request = razer_naga_trinity_effect_static(
             LedStorage::NoStore, LedEffect::Static, logo_color, scroll_color);
@@ -283,6 +298,13 @@ impl DeathAdderV2 {
             Some(device) => Ok(device),
             None => Err(USBError::DeviceNotFound),
         }?;
+
+        let desc = device.device_descriptor()?;
+        if desc.vendor_id() != USB_VENDOR_ID_RAZER || 
+            desc.product_id() != USB_DEVICE_ID_RAZER_DEATHADDER_V2 {
+            return Err(USBError::NonCompatibleDevice);
+        }
+
         let handle = device.open()?;
         Ok(Self { handle: handle })
     }

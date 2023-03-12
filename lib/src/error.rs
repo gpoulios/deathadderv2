@@ -38,6 +38,7 @@ pub type USBResult<T> = result::Result<T, USBError>;
 
 #[derive(Debug)]
 pub enum USBError {
+    NonCompatibleDevice,
     DeviceNotFound,
     /// (total, written) An incomplete write
     IncompleteWrite(usize, usize),
@@ -57,6 +58,7 @@ pub enum USBError {
 impl fmt::Display for USBError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            USBError::NonCompatibleDevice => write!(f, "device is incompatible"),
             USBError::DeviceNotFound => write!(f, "device not found"),
             USBError::IncompleteWrite(total, written) =>
                 write!(f, "failed to write full control message \

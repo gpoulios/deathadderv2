@@ -12,8 +12,10 @@ name = "deathadder-rgb-gui"
 path = "src/gui.rs"
 
 [dependencies]
-rgb = { workspace = true }
 librazer = { path = "../lib" }
+rgb = { workspace = true }
+native-windows-gui = "1.0.13"
+native-windows-derive = "1.0.5"
 
 [dependencies.windows]
 version = "0.44.0"

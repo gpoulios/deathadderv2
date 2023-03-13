@@ -35,12 +35,12 @@ unsafe fn u8sz_to_u8(s: &[u8]) -> u8 {
     str.parse::<u8>().unwrap()
 }
 
-pub type ColorChangeCallback = fn(&ColorDialog, &RGB8);
+pub type ColorChangeCallback = dyn Fn(&ColorDialog, &RGB8) + Send + 'static;
 
 pub struct ColorDialog {
     current: [u8; 3],
     last_notified: RGB8,
-    change_cb: Option<ColorChangeCallback>,
+    change_cb: Option<Box<ColorChangeCallback>>,
 }
 
 impl Default for ColorDialog {
@@ -57,30 +57,35 @@ impl ColorDialog {
         Self { ..Default::default() }
     }
 
-    pub fn show_async(
+    pub fn show_async<F>(
         self,
         parent: HWND,
         initial: RGB8,
-        change_cb: Option<ColorChangeCallback>
-    ) -> JoinHandle<Option<RGB8>> {
+        change_cb: Option<F>
+    ) -> JoinHandle<Option<RGB8>> 
+    where F: Fn(&ColorDialog, &RGB8) + Send + 'static  {
         thread::spawn(move || {
             let mut this = self;
             this.show(parent, initial, change_cb)
         })
     }
 
-    pub fn show(
+    pub fn show<F>(
         &mut self,
         parent: HWND,
         initial: RGB8,
-        change_cb: Option<ColorChangeCallback>
-    ) -> Option<RGB8> {
+        change_cb: Option<F>,
+    ) -> Option<RGB8> 
+    where F: Fn(&ColorDialog, &RGB8) + Send + 'static {
         unsafe {
             // init these so we don't trigger an unnecessary 'change' event on bootstrap
             self.current = [initial.r, initial.g, initial.b];
             self.last_notified = initial;
 
-            self.change_cb = change_cb;
+            self.change_cb = match change_cb {
+                Some(cb) => Some(Box::new(cb)),
+                None => None
+            };
 
             // will set lCustData to self so we can access it in the hook proc
             let this_lp = LPARAM((self as *mut Self) as isize);
@@ -194,9 +199,9 @@ unsafe extern "system" fn cc_hook_proc(
                 if rgb != this.last_notified {
                     this.last_notified = rgb;
 
-                    let change_cb = this.change_cb;
-                    if change_cb.is_some() {
-                        change_cb.unwrap()(this, &rgb);
+                    if this.change_cb.is_some() {
+                        let cb = this.change_cb.as_ref().unwrap().as_ref();
+                        cb(this_ptr.as_ref().unwrap(), &rgb);
                     }
                 }
             }

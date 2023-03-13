@@ -35,15 +35,15 @@ unsafe fn u8sz_to_u8(s: &[u8]) -> u8 {
     str.parse::<u8>().unwrap()
 }
 
-pub type ColorChangeCallback = dyn Fn(&ColorDialog, &RGB8) + Send + 'static;
+pub type ColorChangeCallback<'a> = dyn Fn(&ColorDialog, &RGB8) + Send + Sync + 'a;
 
-pub struct ColorDialog {
+pub struct ColorDialog<'a> {
     current: [u8; 3],
     last_notified: RGB8,
-    change_cb: Option<Box<ColorChangeCallback>>,
+    change_cb: Option<Box<ColorChangeCallback<'a>>>,
 }
 
-impl Default for ColorDialog {
+impl Default for ColorDialog<'_> {
     fn default() -> Self {
         unsafe {
             // safe as 0 a valid bit-pattern for all fields
@@ -52,20 +52,20 @@ impl Default for ColorDialog {
     }
 }
 
-impl ColorDialog {
+impl<'a> ColorDialog<'a> {
     pub fn new() -> Self {
         Self { ..Default::default() }
     }
 
     pub fn show_async<F>(
-        self,
+        &'static mut self,
         parent: HWND,
-        initial: RGB8,
+        initial: Option<RGB8>,
         change_cb: Option<F>
     ) -> JoinHandle<Option<RGB8>> 
-    where F: Fn(&ColorDialog, &RGB8) + Send + 'static  {
+    where F: Fn(&ColorDialog, &RGB8) + Send + Sync + 'a {
         thread::spawn(move || {
-            let mut this = self;
+            let this = self;
             this.show(parent, initial, change_cb)
         })
     }
@@ -73,11 +73,13 @@ impl ColorDialog {
     pub fn show<F>(
         &mut self,
         parent: HWND,
-        initial: RGB8,
+        initial: Option<RGB8>,
         change_cb: Option<F>,
     ) -> Option<RGB8> 
-    where F: Fn(&ColorDialog, &RGB8) + Send + 'static {
+    where F: Fn(&ColorDialog, &RGB8) + Send + Sync + 'a {
         unsafe {
+            let initial = initial.unwrap_or(RGB8::new(0xaa, 0xaa, 0xaa));
+
             // init these so we don't trigger an unnecessary 'change' event on bootstrap
             self.current = [initial.r, initial.g, initial.b];
             self.last_notified = initial;

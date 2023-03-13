@@ -13,7 +13,7 @@ use windows::{
             },
             WindowsAndMessaging::{SendMessageA, GetWindowLongA, SetWindowLongA, 
                 GWL_STYLE, MessageBoxA, MB_OK, MB_ICONERROR,
-                SetCursor, LoadCursorW, IDC_HAND},
+                SetCursor, LoadCursorW, IDC_HAND, IDC_ARROW},
         },
     },
 };
@@ -78,7 +78,7 @@ macro_rules! msgboxerror {
 #[derive(Default, NwgUi)]
 pub struct DeathAdderv2App {
     #[nwg_control(size: (500, 310), center: true, title: "Razer DeathAdder v2 configuration")]
-    #[nwg_events( OnWindowClose: [nwg::stop_thread_dispatch()])]
+    #[nwg_events( OnWindowClose: [DeathAdderv2App::window_close(SELF)])]
     window: nwg::Window,
 
     #[nwg_layout(parent: window, min_size: [400, 200], max_column: Some(10))]
@@ -134,7 +134,7 @@ pub struct DeathAdderv2App {
     lbl_logocolor: nwg::Label,
 
     #[nwg_control(text: "", line_height: Some(20))]
-    #[nwg_layout_item(layout: grid, row: 3, col: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 3, col: 2, col_span: 3)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::logo_color_clicked(SELF)],
         OnMouseMove: [DeathAdderv2App::set_cursor_hand(SELF)],
@@ -155,6 +155,33 @@ pub struct DeathAdderv2App {
 }
 
 impl DeathAdderv2App {
+    /// Sugar to avoid typing self.device.borrow().as_ref().map
+    /// Note: will not execute if device is None
+    fn with_device<U, F>(&self, dav2: F) -> Option<U>
+    where
+        F: FnOnce(&DeathAdderV2) -> U,
+    {
+        self.device.borrow().as_ref().map(dav2)
+    }
+
+    /// Sugar to avoid typing self.config.borrow().as_ref().map
+    /// Note: will not execute if config is None
+    fn with_config<U, F>(&self, cfg: F) -> Option<U>
+    where
+        F: FnOnce(&Config) -> U,
+    {
+        self.config.borrow().as_ref().map(cfg)
+    }
+
+    /// Sugar to avoid typing self.config.borrow().as_ref().map
+    /// Note: will not execute if config is None
+    fn _with_mut_config<U, F>(&self, cff: F) -> Option<U>
+    where
+        F: FnOnce(&mut Config) -> U,
+    {
+        self.config.borrow_mut().as_mut().map(cff)
+    }
+
     fn set_enabled(&self, enabled: bool) {
         self.bar_dpi.set_enabled(enabled);
         self.cmb_pollrate.set_enabled(enabled);
@@ -184,8 +211,8 @@ impl DeathAdderv2App {
                         self.cmb_pollrate.set_enabled(false);
                     }
                 };
-
             },
+
             None => { // no device; set some defaults
                 self.bar_dpi.set_pos(self.bar_dpi.range_min());
                 self.cmb_pollrate.set_selection(None);
@@ -195,7 +222,8 @@ impl DeathAdderv2App {
         // updates that need to happen irrespective of the result
         self.txt_dpi.set_text(&self.bar_dpi.pos().to_string());
 
-        self.config.borrow().as_ref().map(|cfg| {
+        self.with_config(|cfg| {
+            // can't take it from the device; assume it's what the config says
             self.btn_logocolor.set_background_color([cfg.color.r, cfg.color.g, cfg.color.b]);
         });
 
@@ -214,18 +242,6 @@ impl DeathAdderv2App {
             }
         });
 
-        // Maybe dump the struct copy altogether and keep just the static one
-        let mut mx_dav2 = DAV2.lock().unwrap();
-        *mx_dav2 = dev.and_then(|d| {
-            match DeathAdderV2::from(d) {
-                Ok(d) => Some(d),
-                Err(e) => {
-                    msgboxerror!("Error opening device 2: {}", e);
-                    None
-                }
-            }
-        });
-
         self.set_enabled(dav2.is_some());
         self.device.replace(dav2);
         self.update_values();
@@ -234,7 +250,7 @@ impl DeathAdderv2App {
     fn dpi_selected(&self) {
         let dpi = self.bar_dpi.pos() as u16;
         self.txt_dpi.set_text(&self.bar_dpi.pos().to_string());
-        self.device.borrow().as_ref().map(|dav2| dav2.set_dpi(dpi, dpi));
+        self.with_device(|dav2| dav2.set_dpi(dpi, dpi));
     }
 
     fn pollrate_selected(&self) {
@@ -242,50 +258,78 @@ impl DeathAdderv2App {
         self.cmb_pollrate.selection()
             .and_then(|i| collection.get(i))
             .map(|&pollrate| {
-                self.device.borrow().as_ref()
-                    .map(|dav2| dav2.set_poll_rate(pollrate));
+                self.with_device(|dav2| dav2.set_poll_rate(pollrate));
             });
     }
 
     fn set_cursor_hand(&self) {
+        let lpcursorname = match self.device.borrow().as_ref() {
+            Some(_) => IDC_HAND,
+            None => IDC_ARROW,
+        };
+
         unsafe {
-            _ = LoadCursorW(HINSTANCE(0), IDC_HAND)
+            _ = LoadCursorW(HINSTANCE(0), lpcursorname)
                 .map(|cursor| SetCursor(cursor));
         }
     }
 
     fn logo_color_clicked(&self) {
-        println!("CLicked");
-        let cfg = self.config.borrow();
+        let mut cfg_binding = self.config.borrow_mut();
+        let cfg = cfg_binding.as_mut();
 
-        let mut cdlg = ColorDialog::new();
-        let parent = HWND(self.window.handle.hwnd().unwrap() as isize);
-        let initial = cfg.as_ref().unwrap().color;
-                
-        cdlg.show(parent, initial, Some(move |_: &ColorDialog, &color: &RGB8| {
-            // commit the RGB change for the previewing thread to pick up
-            let mut rgb = RGB_TO_SET.lock().unwrap();
-            *rgb = Some(color);
+        let device_binding = self.device.borrow();
+        device_binding.as_ref().map(|dav2| {
+            // map serves also as a scope constraint cause we can't let cdlg
+            // and device binding both be dropped at the end of the function
+            // body
+            let mut dialog = ColorDialog::new();
 
-            // let mut mx_dav2 = DAV2.lock().unwrap();
-            let mx_dav2 = DAV2.lock().unwrap();
-            mx_dav2.as_ref().map(
-                |dav2| dav2.preview_static(color, color));
-        }));
+            // ColorDialog arguments
+            let parent = HWND(self.window.handle.hwnd().unwrap() as isize);
+            let init_logo = cfg.as_ref().map(|cfg| cfg.color);
+            let init_scroll = cfg.as_ref().map(|cfg| cfg.scroll_color)
+                    .unwrap_or(init_logo);
+            let change_cb = Some(move |_: &ColorDialog, &color: &RGB8| {
+                _ = dav2.preview_static(color, init_scroll.unwrap_or(color));
+            });
+
+            // show the dialog and choose what to apply
+            let color = match dialog.show(parent, init_logo, change_cb) {
+                Some(color) => Some(color),
+                None => init_logo,
+            };
+
+            // apply the color (either back to initial or the newly chosen)
+            color.map(|c| {
+                self.with_device(|dav2| {
+                    _ = dav2.set_logo_color(c);
+                    _ = dav2.set_scroll_color(init_scroll.unwrap_or(c));
+                });
+                cfg.map(|cfg| cfg.color = c);
+            });
+
+        }); // <- cdlg dropped and destroyed here
+
+        // device_binding dropped here so that it may outlive cdlg (and change_cb)
+    }
+
+    fn window_close(&self) {
+        self.with_config(|cfg| cfg.save());
+        nwg::stop_thread_dispatch();
     }
 }
 
 /*
  * We show a ChooseColor dialog and let the user pick the color
  * while previewing the current selection on the mouse itself.
- * 
+ *
  * For this we need a) a separate thread (i.e. previewing thread) to update
  * the device and b) to define the color chooser's hook procedure (CCHOOKPROC)
  * in order to get the color values while the user is selecting and before they
  * press the ok button. (a) happens here, while (b) in color_chooser.rs.
  */
 static RGB_TO_SET: Mutex<Option<RGB8>> = Mutex::new(None);
-static DAV2: Mutex<Option<DeathAdderV2>> = Mutex::new(None);
 
 fn main() {
 
@@ -371,10 +415,7 @@ fn main() {
 
     // set initial chooser UI color based on config (if any)
     let cfg = Config::load();
-    let initial = match cfg {
-        Some(ref cfg) => cfg.color,
-        None => RGB8::default()
-    };
+    let initial = cfg.map(|cfg| cfg.color);
 
     let mut cdlg = ColorDialog::new();
 
@@ -385,27 +426,25 @@ fn main() {
         *rgb = Some(*color);
     });
 
-    // block waiting the user to choose
-    let chosen = cdlg.show(HWND(0), initial, change_cb);
+    let color = match cdlg.show(HWND(0), initial, change_cb) {
+        Some(color) => Some(color),
+        None => initial,
+    };
 
     // make sure the thread has stopped previewing on the device
     *keep_previewing.lock().unwrap() = false;
     preview_thread.join().unwrap();
 
-    // final value based on user's choice 
-    let (logo_rgb, scroll_rgb) = if chosen.is_some() {
-        (chosen.unwrap(), chosen.unwrap())
-    } else {
-        (initial, initial)
-    };
-
-    _ = (*dav2_rc).set_logo_color(logo_rgb)
+    color.map(|rgb| {
+        _ = (*dav2_rc).set_logo_color(rgb)
         .map_err(|e| msgboxpanic!("Error setting logo color: {}", e))
-        .and_then(|_| (*dav2_rc).set_scroll_color(scroll_rgb))
+        .and_then(|_| (*dav2_rc).set_scroll_color(rgb))
         .map_err(|e| msgboxpanic!("Error setting scroll wheel color: {}", e));
 
-    _ = Config {
-        color: logo_rgb,
-        scroll_color: Some(scroll_rgb),
-    }.save().map_err(|e| msgboxpanic!("Failed to save config: {}", e));
+        _ = Config {
+            color: rgb,
+            scroll_color: Some(rgb),
+        }.save().map_err(|e| msgboxpanic!("Failed to save config: {}", e));
+    });
+
 }

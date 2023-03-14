@@ -65,8 +65,7 @@ impl<'a> ColorDialog<'a> {
     ) -> JoinHandle<Option<RGB8>> 
     where F: Fn(&ColorDialog, &RGB8) + Send + Sync + 'a {
         thread::spawn(move || {
-            let this = self;
-            this.show(parent, initial, change_cb)
+            self.show(parent, initial, change_cb)
         })
     }
 

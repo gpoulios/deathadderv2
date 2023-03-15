@@ -43,7 +43,7 @@ fn main() {
     let (logo_color, scroll_color) = match args.len() {
         ..=1 => {
             match Config::load() {
-                Some(cfg) => (cfg.color, cfg.scroll_color.or(Some(cfg.color)).unwrap()),
+                Some(cfg) => (cfg.logo_color, cfg.scroll_color),
                 None => panic!("failed to load configuration; please specify \
                     arguments manually")
             }
@@ -67,7 +67,8 @@ fn main() {
         .map_err(|e| panic!("failed to set scroll color: {}", e));
 
     _ = Config {
-        color: logo_color,
-        scroll_color: Some(scroll_color),
+        logo_color: logo_color,
+        scroll_color: scroll_color,
+        same_color: true,
     }.save().map_err(|e| panic!("failed to save config: {}", e));
 }

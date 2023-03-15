@@ -34,44 +34,49 @@ use color_chooser::ColorDialog;
  * invocation). Use DebugView by Mark Russinovich to view
  */
 macro_rules! dbglog {
-    ($($args: tt)*) => {
+    ($($args: tt)*) => {{
+        let msg = format!($($args)*);
+        let msg_sz = format!("{}{}", msg, "\0");
+        println!("{}", msg);
         unsafe {
-            let msg = format!($($args)*);
-            OutputDebugStringA(PCSTR::from_raw(msg.as_ptr()));
-            println!("{}", msg);
+            OutputDebugStringA(PCSTR::from_raw(msg_sz.as_ptr()));
         }
-    }
+    }}
 }
 
 // macro_rules! dbgpanic {
-//     ($($args: tt)*) => {
+//     ($($args: tt)*) => {{
+//         let msg = format!($($args)*);
+//         let msg_sz = format!("{}{}", msg, "\0");
 //         unsafe {
-//             let msg = format!($($args)*);
-//             OutputDebugStringA(PCSTR::from_raw(msg.as_ptr()));
-//             panic!("{}", msg);
+//             OutputDebugStringA(PCSTR::from_raw(msg_sz.as_ptr()));
 //         }
-//     }
+//         panic!("{}", msg);
+//     }}
 // }
 
 macro_rules! msgboxpanic {
-    ($($args: tt)*) => {
+    ($($args: tt)*) => {{
+        let msg = format!($($args)*);
+        let msg_sz = format!("{}{}", msg, "\0");
         unsafe {
-            let msg = format!($($args)*);
-            let msg_ptr = PCSTR::from_raw(msg.as_ptr());
+            let msg_ptr = PCSTR::from_raw(msg_sz.as_ptr());
             MessageBoxA(HWND(0), msg_ptr, s!("Error"), MB_OK | MB_ICONERROR);
-            panic!("{}", msg);
         }
-    }
+        panic!("{}", msg);
+    }}
 }
 
 macro_rules! msgboxerror {
-    ($($args: tt)*) => {
+    ($($args: tt)*) => {{
+        let msg = format!($($args)*);
+        let msg_sz = format!("{}{}", msg, "\0");
+        eprintln!("{}", msg);
         unsafe {
-            let msg = format!($($args)*);
-            let msg_ptr = PCSTR::from_raw(msg.as_ptr());
+            let msg_ptr = PCSTR::from_raw(msg_sz.as_ptr());
             MessageBoxA(HWND(0), msg_ptr, s!("Error"), MB_OK | MB_ICONERROR);
         }
-    }
+    }}
 }
 
 
@@ -151,7 +156,7 @@ pub struct DeathAdderv2App {
     edit_min_size_width: nwg::TextInput,
 
     device: RefCell<Option<DeathAdderV2>>,
-    config: RefCell<Option<Config>>,
+    config: RefCell<Config>,
 }
 
 impl DeathAdderv2App {
@@ -164,22 +169,24 @@ impl DeathAdderv2App {
         self.device.borrow().as_ref().map(dav2)
     }
 
-    /// Sugar to avoid typing self.config.borrow().as_ref().map
+    /// Sugar to avoid typing self.config.borrow()
     /// Note: will not execute if config is None
-    fn with_config<U, F>(&self, cfg: F) -> Option<U>
+    fn with_config<U, F>(&self, cfg_cb: F) -> U
     where
         F: FnOnce(&Config) -> U,
     {
-        self.config.borrow().as_ref().map(cfg)
+        let cfg = self.config.borrow();
+        cfg_cb(&cfg)
     }
 
     /// Sugar to avoid typing self.config.borrow().as_ref().map
     /// Note: will not execute if config is None
-    fn _with_mut_config<U, F>(&self, cff: F) -> Option<U>
+    fn with_mut_config<U, F>(&self, cfg_cb: F) -> U
     where
         F: FnOnce(&mut Config) -> U,
     {
-        self.config.borrow_mut().as_mut().map(cff)
+        let mut cfg = self.config.borrow_mut();
+        cfg_cb(&mut (*cfg))
     }
 
     fn set_enabled(&self, enabled: bool) {
@@ -224,7 +231,7 @@ impl DeathAdderv2App {
 
         self.with_config(|cfg| {
             // can't take it from the device; assume it's what the config says
-            self.btn_logocolor.set_background_color([cfg.color.r, cfg.color.g, cfg.color.b]);
+            self.btn_logocolor.set_background_color([cfg.logo_color.r, cfg.logo_color.g, cfg.logo_color.b]);
         });
 
     }
@@ -275,47 +282,46 @@ impl DeathAdderv2App {
     }
 
     fn logo_color_clicked(&self) {
-        let mut cfg_binding = self.config.borrow_mut();
-        let cfg = cfg_binding.as_mut();
+        self.with_mut_config(|cfg| {
 
-        let device_binding = self.device.borrow();
-        device_binding.as_ref().map(|dav2| {
-            // map serves also as a scope constraint cause we can't let cdlg
-            // and device binding both be dropped at the end of the function
-            // body
-            let mut dialog = ColorDialog::new();
+            self.with_device(|dav2| {
+                // dav2 here must outlive dialog and therefore change_cb
+                let mut dialog = ColorDialog::new();
 
-            // ColorDialog arguments
-            let parent = HWND(self.window.handle.hwnd().unwrap() as isize);
-            let init_logo = cfg.as_ref().map(|cfg| cfg.color);
-            let init_scroll = cfg.as_ref().map(|cfg| cfg.scroll_color)
-                    .unwrap_or(init_logo);
-            let change_cb = Some(move |_: &ColorDialog, &color: &RGB8| {
-                _ = dav2.preview_static(color, init_scroll.unwrap_or(color));
-            });
-
-            // show the dialog and choose what to apply
-            let color = match dialog.show(parent, init_logo, change_cb) {
-                Some(color) => Some(color),
-                None => init_logo,
-            };
-
-            // apply the color (either back to initial or the newly chosen)
-            color.map(|c| {
-                self.with_device(|dav2| {
-                    _ = dav2.set_logo_color(c);
-                    _ = dav2.set_scroll_color(init_scroll.unwrap_or(c));
+                // ColorDialog arguments
+                let parent = HWND(self.window.handle.hwnd().unwrap() as isize);
+                let init_logo = Some(cfg.logo_color);
+                let init_scroll = cfg.scroll_color;
+                let same_color = cfg.same_color;
+                let change_cb = Some(move |_: &ColorDialog, &color: &RGB8| {
+                    _ = dav2.preview_static(
+                        color, if same_color { color } else { init_scroll });
                 });
-                cfg.map(|cfg| cfg.color = c);
-            });
 
-        }); // <- cdlg dropped and destroyed here
+                // show the dialog and choose what to apply
+                let color = match dialog.show(parent, init_logo, change_cb) {
+                    Some(color) => Some(color),
+                    None => init_logo,
+                };
 
-        // device_binding dropped here so that it may outlive cdlg (and change_cb)
+                // apply the color (either back to initial or the newly chosen)
+                color.map(|c| {
+                    self.with_device(|dav2| {
+                        _ = dav2.set_logo_color(c);
+                        _ = dav2.set_scroll_color(if same_color { c } else { init_scroll });
+                    });
+                    cfg.logo_color = c;
+                });
+
+            }); // <- dialog, change_cb dropped here
+        });
     }
 
     fn window_close(&self) {
-        self.with_config(|cfg| cfg.save());
+        match self.with_config(|cfg| cfg.save()) {
+            Ok(_) => (),
+            Err(e) => msgboxerror!("Failed to save config: {}", e),
+        }
         nwg::stop_thread_dispatch();
     }
 }
@@ -332,11 +338,6 @@ impl DeathAdderv2App {
 static RGB_TO_SET: Mutex<Option<RGB8>> = Mutex::new(None);
 
 fn main() {
-
-    let available_devices = DeathAdderV2::list().unwrap_or_else(
-        |e| msgboxpanic!("Error querying DeathAdder v2 devices: {}", e)
-    );
-
     _ = nwg::init().map_err(
         |e| msgboxpanic!("Failed to init Native Windows GUI: {}", e));
     _ = nwg::Font::set_global_family("Segoe UI").map_err(
@@ -345,7 +346,7 @@ fn main() {
     let app = DeathAdderv2App::build_ui(Default::default())
         .unwrap_or_else(|e| msgboxpanic!("Failed to build UI: {}", e));
 
-    app.config.replace(Config::load());
+    app.config.replace(Config::load().unwrap_or(Config::default()));
 
     // default to all disabled, and if a valid device is selected we'll enable
     app.set_enabled(false);
@@ -361,6 +362,10 @@ fn main() {
         style = style | (TBS_TOOLTIPS | TBS_BOTTOM | TBS_DOWNISLEFT | TBS_NOTIFYBEFOREMOVE) as i32;
         SetWindowLongA(hbar, GWL_STYLE, style);
     }
+
+    let available_devices = DeathAdderV2::list().unwrap_or_else(
+        |e| msgboxpanic!("Error querying DeathAdder v2 devices: {}", e)
+    );
 
     app.cmb_device.set_collection(available_devices);
     // if only 1, select it by default and show appropriate error if failed to open
@@ -415,7 +420,7 @@ fn main() {
 
     // set initial chooser UI color based on config (if any)
     let cfg = Config::load();
-    let initial = cfg.map(|cfg| cfg.color);
+    let initial = cfg.map(|cfg| cfg.logo_color);
 
     let mut cdlg = ColorDialog::new();
 
@@ -442,8 +447,9 @@ fn main() {
         .map_err(|e| msgboxpanic!("Error setting scroll wheel color: {}", e));
 
         _ = Config {
-            color: rgb,
-            scroll_color: Some(rgb),
+            logo_color: rgb,
+            scroll_color: rgb,
+            same_color: true,
         }.save().map_err(|e| msgboxpanic!("Failed to save config: {}", e));
     });
 

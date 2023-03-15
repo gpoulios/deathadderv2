@@ -5,8 +5,9 @@ use rgb::RGB8;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-    pub color: RGB8,
-    pub scroll_color: Option<RGB8>,
+    pub same_color: bool,
+    pub logo_color: RGB8,
+    pub scroll_color: RGB8,
 }
 
 impl Config {
@@ -23,10 +24,11 @@ impl Config {
 }
 
 impl Default for Config {
-    fn default() -> Self { 
-        Self { 
-            color: RGB8::new(0xAA, 0xAA, 0xAA), 
-            scroll_color: None 
+    fn default() -> Self {
+        Self {
+            same_color: true,
+            logo_color: RGB8::new(0xAA, 0xAA, 0xAA),
+            scroll_color: RGB8::new(0xAA, 0xAA, 0xAA),
         }
     }
 }

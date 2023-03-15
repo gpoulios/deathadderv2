@@ -94,7 +94,7 @@ impl UsbDevice {
         let res = device_list.iter()
             .filter_map(|device| {
                 match device.device_descriptor() {
-                    Ok(descr) => 
+                    Ok(descr) =>
                         if descr.vendor_id() == vid && descr.product_id() == pid {
                             Some(UsbDevice(Some(device)))
                         } else {
@@ -115,7 +115,7 @@ pub trait RazerDevice: fmt::Display {
 
     fn vid(&self) -> u16 { USB_VENDOR_ID_RAZER }
 
-    fn pid(&self) -> u16;    
+    fn pid(&self) -> u16;
 
     fn name(&self) -> String {
         get_device_name(self.handle())
@@ -133,7 +133,7 @@ pub trait RazerDevice: fmt::Display {
     fn get_serial(&self) -> USBResult<String> {
         let mut request = razer_chroma_standard_get_serial();
         let response = self.send_payload(&mut request)?;
-        
+
         let bytes = response.arguments[..22].iter()
             .take_while(|&&c| c != 0)
             .cloned()
@@ -156,7 +156,7 @@ pub trait RazerMouse: RazerDevice {
     fn get_dpi(&self) -> USBResult<(u16, u16)> {
         let mut request = razer_chroma_misc_get_dpi_xy(LedStorage::NoStore);
         let response = self.send_payload(&mut request)?;
-        
+
         let dpi_x = ((response.arguments[1] as u16) << 8) | (response.arguments[2] as u16) & 0xff;
         let dpi_y = ((response.arguments[3] as u16) << 8) | (response.arguments[4] as u16) & 0xff;
 
@@ -300,7 +300,7 @@ impl DeathAdderV2 {
         }?;
 
         let desc = device.device_descriptor()?;
-        if desc.vendor_id() != USB_VENDOR_ID_RAZER || 
+        if desc.vendor_id() != USB_VENDOR_ID_RAZER ||
             desc.product_id() != USB_DEVICE_ID_RAZER_DEATHADDER_V2 {
             return Err(USBError::NonCompatibleDevice);
         }

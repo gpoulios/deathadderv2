@@ -8,13 +8,13 @@ pub mod common {
     use core::mem::{size_of, size_of_val, MaybeUninit};
     use rgb::{RGB8, FromSlice};
     use crate::error::{ParseRGBError, USBResult, USBError};
-    
+
     pub fn rgb_from_hex(input: &str) -> Result<RGB8, ParseRGBError> {
         let s = input
             .trim_start_matches("0x")
             .trim_start_matches("#")
             .trim_end_matches("h");
-    
+
         match s.len() {
             3 => {
                 match s.chars()
@@ -224,7 +224,7 @@ pub mod common {
         /// Converts this struct to network byte order in-place
         fn to_network_byte_order_mut(&mut self) -> &mut Self {
             self.remaining_packets =
-                (self.remaining_packets & 0xff) << 8 | 
+                (self.remaining_packets & 0xff) << 8 |
                 (self.remaining_packets >> 8);
             self
         }
@@ -260,7 +260,7 @@ pub mod common {
         fn from(buffer: &[u8]) -> Option<Self> {
             let c_buf = buffer.as_ptr();
             let s = c_buf as *mut Self;
-        
+
             if size_of::<Self>() == size_of_val(buffer) {
                 unsafe {
                     let ref s2 = *s;
@@ -356,7 +356,7 @@ pub mod common {
         request.update_crc();
         let response = razer_get_report(usb_dev, request)?;
 
-        if response.remaining_packets != request.remaining_packets || 
+        if response.remaining_packets != request.remaining_packets ||
             response.command_class != request.command_class ||
             response.command_id != request.command_id {
             return Err(USBError::ResponseMismatch);

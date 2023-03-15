@@ -18,7 +18,7 @@ native-windows-gui = "1.0.13"
 native-windows-derive = "1.0.5"
 
 [dependencies.windows]
-version = "0.44.0"
+version = "0.46.0"
 features = [
     "Win32_Foundation",
     "Win32_UI_Controls_Dialogs",

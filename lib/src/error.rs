@@ -71,9 +71,9 @@ impl fmt::Display for USBError {
             USBError::CommandFailed => write!(f, "command failed"),
             USBError::CommandNotSupported => write!(f, "command not supported"),
             USBError::CommandTimeout => write!(f, "command timed out"),
-            USBError::ResponseUnknownStatus(status) => 
+            USBError::ResponseUnknownStatus(status) =>
                 write!(f, "unrecognized status in response: {:#02X}", status),
-            USBError::ResponseUnknownValue(value) => 
+            USBError::ResponseUnknownValue(value) =>
                 write!(f, "unrecognized value in response: {:#02X}", value),
             USBError::RUSBError(ref e) => write!(f, "{}", e),
         }

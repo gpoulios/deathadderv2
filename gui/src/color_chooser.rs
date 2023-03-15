@@ -62,7 +62,7 @@ impl<'a> ColorDialog<'a> {
         parent: HWND,
         initial: Option<RGB8>,
         change_cb: Option<F>
-    ) -> JoinHandle<Option<RGB8>> 
+    ) -> JoinHandle<Option<RGB8>>
     where F: Fn(&ColorDialog, &RGB8) + Send + Sync + 'a {
         thread::spawn(move || {
             self.show(parent, initial, change_cb)
@@ -74,7 +74,7 @@ impl<'a> ColorDialog<'a> {
         parent: HWND,
         initial: Option<RGB8>,
         change_cb: Option<F>,
-    ) -> Option<RGB8> 
+    ) -> Option<RGB8>
     where F: Fn(&ColorDialog, &RGB8) + Send + Sync + 'a {
         unsafe {
             let initial = initial.unwrap_or(RGB8::new(0xaa, 0xaa, 0xaa));
@@ -93,10 +93,10 @@ impl<'a> ColorDialog<'a> {
 
             // this will be both the initial and custom colors for now
             let mut initial_cr = COLORREF(
-                initial.r as u32 | 
-                (initial.g as u32) << 8 | 
+                initial.r as u32 |
+                (initial.g as u32) << 8 |
                 (initial.b as u32) << 16);
-    
+
             let mut cc = CHOOSECOLORA {
                 lStructSize: size_of::<CHOOSECOLORA>() as u32,
                 hwndOwner: parent,
@@ -108,7 +108,7 @@ impl<'a> ColorDialog<'a> {
                 lCustData: this_lp,
                 ..Default::default()
             };
-    
+
             let ok = ChooseColorA(&mut cc).into();
             if ok {
                 Some(RGB8{
@@ -124,16 +124,16 @@ impl<'a> ColorDialog<'a> {
 }
 
 /*
- * The CCHOOKPROC used for 2 things: 
+ * The CCHOOKPROC used for 2 things:
  *  1) to center our orphan dialog if it has no parent and
  *  2) to generate color change events
- * 
+ *
  * We get RGB channel updates one-by-one in 3 consecutive WM_COMMAND(EN_UPDATE)
  * messages in CCHOOKPROC, therefore it should be more perfomant not to trigger
  * any listener callbacks (in this case our preview thread which would send a
  * USB command to the mouse) on each of those (partial) updates. We store those
  * updates in `ColorDialog.current`.
- * 
+ *
  * A full update is assumed to be when the WM_PAINT message is sent, at which
  * point we invoke the `change_cb`.
  */
@@ -153,7 +153,7 @@ unsafe extern "system" fn cc_hook_proc(
                 let mut rc = RECT::default();
                 let mut desktop_rc = RECT::default();
 
-                if GetWindowRect(hwnd, &mut rc).into() && 
+                if GetWindowRect(hwnd, &mut rc).into() &&
                     GetClientRect(GetDesktopWindow(), &mut desktop_rc).into() {
 
                     rc.left = (desktop_rc.right/2) - ((rc.right - rc.left)/2);
@@ -170,7 +170,7 @@ unsafe extern "system" fn cc_hook_proc(
             let cmd = (wparam.0 >> 16) as u32;
             let ctrl_id = wparam.0 & 0xffff;
             let ctrl_handle = HWND(lparam.0);
-            
+
             // used WinId to get the textboxes' ids (0x2c2,3,4)
             if cmd == EN_UPDATE && 0x2c2 <= ctrl_id && ctrl_id <= 0x2c4 {
                 let mut text = [0u8; 10];
@@ -207,7 +207,7 @@ unsafe extern "system" fn cc_hook_proc(
                 }
             }
         },
-        
+
         _ => ()
     }
     0

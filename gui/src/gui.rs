@@ -1,6 +1,6 @@
 // #![windows_subsystem = "windows"]
 
-use std::{thread, sync::{Arc, Mutex}, cell::RefCell};
+use std::{thread, sync::{Arc, Mutex}, cell::RefCell, ops::Deref};
 use core::time::Duration;
 use windows::{
     core::{s, PCSTR},
@@ -79,10 +79,26 @@ macro_rules! msgboxerror {
     }}
 }
 
+/// convert bool to nwg::CheckBoxState
+macro_rules! to_check_state {
+    ($b:expr) => {
+        if $b { nwg::CheckBoxState::Checked } else { nwg::CheckBoxState::Unchecked }
+    };
+}
+
+/// convert nwg::CheckBoxState to bool
+macro_rules! from_check_state {
+    ($s:expr) => {
+        match $s {
+            nwg::CheckBoxState::Checked => true,
+            _ => false,
+        }
+    };
+}
 
 #[derive(Default, NwgUi)]
 pub struct DeathAdderv2App {
-    #[nwg_control(size: (500, 310), center: true, title: "Razer DeathAdder v2 configuration")]
+    #[nwg_control(size: (700, 310), center: true, title: "Razer DeathAdder v2 configuration")]
     #[nwg_events( OnWindowClose: [DeathAdderv2App::window_close(SELF)])]
     window: nwg::Window,
 
@@ -107,7 +123,7 @@ pub struct DeathAdderv2App {
 
     #[nwg_control(range: Some(100..20000), pos: Some(20000))]
     #[nwg_layout_item(layout: grid, row: 1, col: 2, col_span: 5)]
-    #[nwg_events( 
+    #[nwg_events(
         // Unfortunately 'TrackBarUpdated' doesn't trigger with keyboard or
         // scroll, so we update on each change, even if during mouse drag
         // this might be spamming the device
@@ -132,27 +148,50 @@ pub struct DeathAdderv2App {
     cmb_pollrate: nwg::ComboBox<PollingRate>,
 
     /*
-     * Logo colour
+     * Logo color
      */
     #[nwg_control(text: "Logo color:", h_align: nwg::HTextAlign::Right)]
     #[nwg_layout_item(layout: grid, row: 3, col_span: 2)]
     lbl_logocolor: nwg::Label,
 
     #[nwg_control(text: "", line_height: Some(20))]
-    #[nwg_layout_item(layout: grid, row: 3, col: 2, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 3, col: 2, col_span: 2)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::logo_color_clicked(SELF)],
         OnMouseMove: [DeathAdderv2App::set_cursor_hand(SELF)],
     )]
     btn_logocolor: nwg::RichLabel,
 
+    /*
+     * Scroll color
+     */
+    #[nwg_control(text: "Scroll wheel color:", h_align: nwg::HTextAlign::Right)]
+    #[nwg_layout_item(layout: grid, row: 4, col_span: 2)]
+    lbl_scrollcolor: nwg::Label,
+
+    #[nwg_control(text: "", line_height: Some(20))]
+    #[nwg_layout_item(layout: grid, row: 4, col: 2, col_span: 2)]
+    #[nwg_events(
+        MousePressLeftUp: [DeathAdderv2App::scroll_color_clicked(SELF)],
+        OnMouseMove: [DeathAdderv2App::set_cursor_hand(SELF)],
+    )]
+    btn_scrollcolor: nwg::RichLabel,
+
+    /*
+     * Same color check box
+     */
+    #[nwg_control(text: "Same as logo")]
+    #[nwg_layout_item(layout: grid, row: 4, col: 4, col_span: 3)]
+    #[nwg_events(MousePressLeftUp: [DeathAdderv2App::same_color_clicked(SELF)])]
+    chk_samecolor: nwg::CheckBox,
+
     // Min size
     #[nwg_control(text: "Min size:", h_align: nwg::HTextAlign::Right)]
-    #[nwg_layout_item(layout: grid, row: 4, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 5, col_span: 2)]
     label4: nwg::Label,
 
     #[nwg_control]
-    #[nwg_layout_item(layout: grid, row: 4, col: 2, col_span: 7)]
+    #[nwg_layout_item(layout: grid, row: 5, col: 2, col_span: 7)]
     edit_min_size_width: nwg::TextInput,
 
     device: RefCell<Option<DeathAdderV2>>,
@@ -169,8 +208,7 @@ impl DeathAdderv2App {
         self.device.borrow().as_ref().map(dav2)
     }
 
-    /// Sugar to avoid typing self.config.borrow()
-    /// Note: will not execute if config is None
+    /// Borrow config and apply closure
     fn with_config<U, F>(&self, cfg_cb: F) -> U
     where
         F: FnOnce(&Config) -> U,
@@ -179,8 +217,7 @@ impl DeathAdderv2App {
         cfg_cb(&cfg)
     }
 
-    /// Sugar to avoid typing self.config.borrow().as_ref().map
-    /// Note: will not execute if config is None
+    /// Borrow mutable config and apply closure
     fn with_mut_config<U, F>(&self, cfg_cb: F) -> U
     where
         F: FnOnce(&mut Config) -> U,
@@ -189,10 +226,10 @@ impl DeathAdderv2App {
         cfg_cb(&mut (*cfg))
     }
 
-    fn set_enabled(&self, enabled: bool) {
+    fn set_device_controls_enabled(&self, enabled: bool) {
         self.bar_dpi.set_enabled(enabled);
         self.cmb_pollrate.set_enabled(enabled);
-        // self.btn_logocolor.set_enabled(enabled);
+        self.chk_samecolor.set_enabled(enabled);
     }
 
     fn update_values(&self) {
@@ -230,8 +267,10 @@ impl DeathAdderv2App {
         self.txt_dpi.set_text(&self.bar_dpi.pos().to_string());
 
         self.with_config(|cfg| {
-            // can't take it from the device; assume it's what the config says
-            self.btn_logocolor.set_background_color([cfg.logo_color.r, cfg.logo_color.g, cfg.logo_color.b]);
+            // can't take these from the device; assume they're what the config says
+            self.set_logo_color(cfg.logo_color);
+            self.set_scroll_color(cfg.scroll_color);
+            self.set_same_color(cfg.same_color, true);
         });
 
     }
@@ -249,7 +288,7 @@ impl DeathAdderv2App {
             }
         });
 
-        self.set_enabled(dav2.is_some());
+        self.set_device_controls_enabled(dav2.is_some());
         self.device.replace(dav2);
         self.update_values();
     }
@@ -283,8 +322,8 @@ impl DeathAdderv2App {
 
     fn logo_color_clicked(&self) {
         self.with_mut_config(|cfg| {
-
             self.with_device(|dav2| {
+
                 // dav2 here must outlive dialog and therefore change_cb
                 let mut dialog = ColorDialog::new();
 
@@ -298,30 +337,113 @@ impl DeathAdderv2App {
                         color, if same_color { color } else { init_scroll });
                 });
 
-                // show the dialog and choose what to apply
+                // show the dialog and choose what to apply (either initial or new)
                 let color = match dialog.show(parent, init_logo, change_cb) {
-                    Some(color) => Some(color),
-                    None => init_logo,
+                    Some(chosen_color) => chosen_color,
+                    None => cfg.logo_color,
                 };
 
-                // apply the color (either back to initial or the newly chosen)
-                color.map(|c| {
-                    self.with_device(|dav2| {
-                        _ = dav2.set_logo_color(c);
-                        _ = dav2.set_scroll_color(if same_color { c } else { init_scroll });
-                    });
-                    cfg.logo_color = c;
-                });
+                // set the color
+                cfg.logo_color = color;
+                self.set_logo_color(color);
+                if same_color {
+                    self.set_scroll_color(color);
+                }
 
             }); // <- dialog, change_cb dropped here
         });
     }
 
-    fn window_close(&self) {
-        match self.with_config(|cfg| cfg.save()) {
-            Ok(_) => (),
-            Err(e) => msgboxerror!("Failed to save config: {}", e),
+    fn logo_color(&self) -> RGB8 {
+        self.with_config(|cfg| cfg.logo_color)
+    }
+
+    /// Does not update the config
+    fn set_logo_color(&self, color: RGB8) {
+        self.with_device(|dav2| dav2.set_logo_color(color));
+        self.btn_logocolor.set_background_color(color.into());
+    }
+
+    fn scroll_color_clicked(&self) {
+        self.with_mut_config(|cfg| {
+            self.with_device(|dav2| {
+
+                // dav2 here must outlive dialog and therefore change_cb
+                let mut dialog = ColorDialog::new();
+
+                // ColorDialog arguments
+                let parent = HWND(self.window.handle.hwnd().unwrap() as isize);
+                let logo_color = cfg.logo_color;
+                let init_scroll = Some(if cfg.same_color {
+                    cfg.logo_color
+                } else {
+                    cfg.scroll_color
+                });
+                let change_cb = Some(move |_: &ColorDialog, &color: &RGB8| {
+                    _ = dav2.preview_static(logo_color, color);
+                });
+
+                // show the dialog and choose what to apply (either initial or new)
+                let color = match dialog.show(parent, init_scroll, change_cb) {
+                    Some(chosen_color) => {
+                        // if the user pressed ok, we no longer use same colors
+                        cfg.same_color = false;
+                        self.chk_samecolor.set_check_state(to_check_state!(false));
+                        cfg.scroll_color = chosen_color;
+                        chosen_color
+                    },
+                    None => {
+                        // if the user pressed cancel, revert (nothing to save in cfg)
+                        if cfg.same_color {
+                            logo_color
+                        } else {
+                            cfg.scroll_color
+                        }
+                    },
+                };
+
+                // set the color
+                self.set_scroll_color(color);
+
+            }); // <- dialog, change_cb dropped here
+        });
+    }
+
+    fn scroll_color(&self) -> RGB8 {
+        self.with_config(|cfg| cfg.scroll_color)
+    }
+
+    /// Does not update the config
+    fn set_scroll_color(&self, color: RGB8) {
+        self.with_device(|dav2| dav2.set_scroll_color(color));
+        self.btn_scrollcolor.set_background_color(color.into());
+    }
+
+    fn same_color_clicked(&self) {
+        // unfortunately there is no 'state_changed' event so we get the
+        // mouse up event which is before the state has actually changed
+        // so we invert it to get what will become
+        let same = !from_check_state!(self.chk_samecolor.check_state());
+        self.set_same_color(same, false);
+        self.with_mut_config(|cfg| cfg.same_color = same);
+    }
+
+    /// Does not update the config
+    fn set_same_color(&self, same: bool, update_ui: bool) {
+        if update_ui {
+            self.chk_samecolor.set_check_state(to_check_state!(same));
         }
+        if same {
+            self.set_scroll_color(self.logo_color());
+        } else {
+            self.set_scroll_color(self.scroll_color());
+        }
+    }
+
+    fn window_close(&self) {
+        _ = self.with_config(|cfg| cfg.save()).map_err(|e|{
+            msgboxerror!("Failed to save config: {}", e);
+        });
         nwg::stop_thread_dispatch();
     }
 }
@@ -348,8 +470,8 @@ fn main() {
 
     app.config.replace(Config::load().unwrap_or(Config::default()));
 
-    // default to all disabled, and if a valid device is selected we'll enable
-    app.set_enabled(false);
+    // default to false and if a valid device is selected they will be enabled
+    app.set_device_controls_enabled(false);
 
     // configure a few things on the trackbar
     unsafe {

@@ -182,7 +182,10 @@ pub struct DeathAdderv2App {
      */
     #[nwg_control(text: "Same as logo")]
     #[nwg_layout_item(layout: grid, row: 4, col: 4, col_span: 3)]
-    #[nwg_events(MousePressLeftUp: [DeathAdderv2App::same_color_clicked(SELF)])]
+    #[nwg_events(
+        MousePressLeftUp: [DeathAdderv2App::same_color_changed(SELF, EVT, EVT_DATA)],
+        OnKeyRelease: [DeathAdderv2App::same_color_changed(SELF, EVT, EVT_DATA)]
+    )]
     chk_samecolor: nwg::CheckBox,
 
     // Min size
@@ -419,10 +422,16 @@ impl DeathAdderv2App {
         self.btn_scrollcolor.set_background_color(color.into());
     }
 
-    fn same_color_clicked(&self) {
+    fn same_color_changed(&self, evt: nwg::Event, evtdata: &nwg::EventData) {
+        // only interested in space key
+        if evt == nwg::Event::OnKeyRelease && evtdata.on_key() != 32u32 {
+            return
+        }
+
         // unfortunately there is no 'state_changed' event so we get the
-        // mouse up event which is before the state has actually changed
-        // so we invert it to get what will become
+        // mouse up and space key events which are before the state has
+        // actually changed so we invert it to get what will become
+
         let same = !from_check_state!(self.chk_samecolor.check_state());
         self.set_same_color(same, false);
         self.with_mut_config(|cfg| cfg.same_color = same);

@@ -1,18 +1,17 @@
 // #![windows_subsystem = "windows"]
 
-use std::{thread, sync::{Arc, Mutex}, cell::RefCell, ops::Deref};
-use core::time::Duration;
+use std::cell::RefCell;
 use windows::{
     core::{s, PCSTR},
     Win32::{
         System::Diagnostics::Debug::OutputDebugStringA,
         Foundation::{HWND, WPARAM, LPARAM, HINSTANCE},
         UI::{
-            Controls::{TBS_TOOLTIPS, TBS_BOTTOM, TBS_DOWNISLEFT, TBM_SETLINESIZE, 
+            Controls::{TBS_TOOLTIPS, TBS_BOTTOM, TBS_DOWNISLEFT, TBM_SETLINESIZE,
                 TBM_SETPAGESIZE, TBM_SETTICFREQ, TBS_NOTIFYBEFOREMOVE,
             },
-            WindowsAndMessaging::{SendMessageA, GetWindowLongA, SetWindowLongA, 
-                GWL_STYLE, MessageBoxA, MB_OK, MB_ICONERROR,
+            WindowsAndMessaging::{SendMessageA, GetWindowLongA, SetWindowLongA,
+                GWL_STYLE, MessageBoxA, MB_OK, MB_ICONERROR, BS_TOP,
                 SetCursor, LoadCursorW, IDC_HAND, IDC_ARROW},
         },
     },
@@ -96,21 +95,40 @@ macro_rules! from_check_state {
     };
 }
 
+fn configure_trackbar(bar: &nwg::TrackBar, line: isize, page: isize) {
+    unsafe {
+        let hbar = HWND(bar.handle.hwnd().unwrap() as isize);
+        SendMessageA(hbar, TBM_SETLINESIZE, WPARAM(0), LPARAM(line));
+        SendMessageA(hbar, TBM_SETPAGESIZE, WPARAM(0), LPARAM(page));
+        SendMessageA(hbar, TBM_SETTICFREQ, WPARAM(line as usize), LPARAM(0));
+        add_style(&bar.handle,
+            (TBS_TOOLTIPS | TBS_BOTTOM | TBS_DOWNISLEFT | TBS_NOTIFYBEFOREMOVE) as i32);
+    }
+}
+
+fn add_style(handle: &nwg::ControlHandle, style: i32) {
+    unsafe {
+        let hwnd = HWND(handle.hwnd().unwrap() as isize);
+        let style = style | GetWindowLongA(hwnd, GWL_STYLE);
+        SetWindowLongA(hwnd, GWL_STYLE, style);
+    }
+}
+
 #[derive(Default, NwgUi)]
 pub struct DeathAdderv2App {
     #[nwg_control(size: (700, 310), center: true, title: "Razer DeathAdder v2 configuration")]
     #[nwg_events( OnWindowClose: [DeathAdderv2App::window_close(SELF)])]
     window: nwg::Window,
 
-    #[nwg_layout(parent: window, min_size: [400, 200], max_column: Some(10))]
+    #[nwg_layout(parent: window, min_size: [400, 200], max_column: Some(11))]
     grid: nwg::GridLayout,
 
     #[nwg_control(text: "Device:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, col_span: 2)]
-    label1: nwg::Label,
+    #[nwg_layout_item(layout: grid, col_span: 3)]
+    lbl_device: nwg::Label,
 
     #[nwg_control(v_align: nwg::VTextAlign::Top)] // has trouble aligning vertically
-    #[nwg_layout_item(layout: grid, col: 2, col_span: 7)]
+    #[nwg_layout_item(layout: grid, col: 3, col_span: 7)]
     #[nwg_events( OnComboxBoxSelection: [DeathAdderv2App::device_selected(SELF)])]
     cmb_device: nwg::ComboBox<UsbDevice>,
 
@@ -118,11 +136,11 @@ pub struct DeathAdderv2App {
      * DPI
      */
     #[nwg_control(text: "DPI:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 1, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 1, col_span: 3)]
     lbl_dpi: nwg::Label,
 
     #[nwg_control(range: Some(100..20000), pos: Some(20000))]
-    #[nwg_layout_item(layout: grid, row: 1, col: 2, col_span: 5)]
+    #[nwg_layout_item(layout: grid, row: 1, col: 3, col_span: 5)]
     #[nwg_events(
         // Unfortunately 'TrackBarUpdated' doesn't trigger with keyboard or
         // scroll, so we update on each change, even if during mouse drag
@@ -132,18 +150,18 @@ pub struct DeathAdderv2App {
     bar_dpi: nwg::TrackBar,
 
     #[nwg_control(text: "20000", h_align: nwg::HTextAlign::Left, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 1, col: 7, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 1, col: 8, col_span: 2)]
     txt_dpi: nwg::Label,
 
     /*
      * Polling rate
      */
     #[nwg_control(text: "Polling rate:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 2, col_span: 3)]
     lbl_pollrate: nwg::Label,
 
     #[nwg_control(collection: PollingRate::all(), v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 2, col: 2, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 2, col: 3, col_span: 2)]
     #[nwg_events( OnComboxBoxSelection: [DeathAdderv2App::pollrate_selected(SELF)])]
     cmb_pollrate: nwg::ComboBox<PollingRate>,
 
@@ -151,11 +169,11 @@ pub struct DeathAdderv2App {
      * Logo color
      */
     #[nwg_control(text: "Logo color:", h_align: nwg::HTextAlign::Right)]
-    #[nwg_layout_item(layout: grid, row: 3, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 3, col_span: 3)]
     lbl_logocolor: nwg::Label,
 
     #[nwg_control(text: "", line_height: Some(20))]
-    #[nwg_layout_item(layout: grid, row: 3, col: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 3, col: 3, col_span: 2)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::logo_color_clicked(SELF)],
         OnMouseMove: [DeathAdderv2App::set_cursor_hand(SELF)],
@@ -166,11 +184,11 @@ pub struct DeathAdderv2App {
      * Scroll color
      */
     #[nwg_control(text: "Scroll wheel color:", h_align: nwg::HTextAlign::Right)]
-    #[nwg_layout_item(layout: grid, row: 4, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 4, col_span: 3)]
     lbl_scrollcolor: nwg::Label,
 
     #[nwg_control(text: "", line_height: Some(20))]
-    #[nwg_layout_item(layout: grid, row: 4, col: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 4, col: 3, col_span: 2)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::scroll_color_clicked(SELF)],
         OnMouseMove: [DeathAdderv2App::set_cursor_hand(SELF)],
@@ -181,21 +199,65 @@ pub struct DeathAdderv2App {
      * Same color check box
      */
     #[nwg_control(text: "Same as logo")]
-    #[nwg_layout_item(layout: grid, row: 4, col: 4, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 4, col: 5, col_span: 3)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::same_color_changed(SELF, EVT, EVT_DATA)],
         OnKeyRelease: [DeathAdderv2App::same_color_changed(SELF, EVT, EVT_DATA)]
     )]
     chk_samecolor: nwg::CheckBox,
 
-    // Min size
-    #[nwg_control(text: "Min size:", h_align: nwg::HTextAlign::Right)]
-    #[nwg_layout_item(layout: grid, row: 5, col_span: 2)]
-    label4: nwg::Label,
+    /*
+     * Logo brightness
+     */
+    #[nwg_control(text: "Logo brightness:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
+    #[nwg_layout_item(layout: grid, row: 5, col_span: 3)]
+    lbl_logobright: nwg::Label,
 
-    #[nwg_control]
-    #[nwg_layout_item(layout: grid, row: 5, col: 2, col_span: 7)]
-    edit_min_size_width: nwg::TextInput,
+    #[nwg_control(range: Some(0..100), pos: Some(50))]
+    #[nwg_layout_item(layout: grid, row: 5, col: 3, col_span: 4)]
+    #[nwg_events(
+        // Unfortunately 'TrackBarUpdated' doesn't trigger with keyboard or
+        // scroll, so we update on each change, even if during mouse drag
+        // this might be spamming the device
+        OnHorizontalScroll: [DeathAdderv2App::logo_brightness_selected(SELF)],
+    )]
+    bar_logobright: nwg::TrackBar,
+
+    #[nwg_control(text: "50", h_align: nwg::HTextAlign::Left, v_align: nwg::VTextAlign::Top)]
+    #[nwg_layout_item(layout: grid, row: 5, col: 7)]
+    txt_logobright: nwg::Label,
+
+    /*
+     * Scroll brightness
+     */
+    #[nwg_control(text: "Scroll wheel brightness:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
+    #[nwg_layout_item(layout: grid, row: 6, col_span: 3)]
+    lbl_scrollbright: nwg::Label,
+
+    #[nwg_control(range: Some(0..100), pos: Some(50))]
+    #[nwg_layout_item(layout: grid, row: 6, col: 3, col_span: 4)]
+    #[nwg_events(
+        // Unfortunately 'TrackBarUpdated' doesn't trigger with keyboard or
+        // scroll, so we update on each change, even if during mouse drag
+        // this might be spamming the device
+        OnHorizontalScroll: [DeathAdderv2App::scroll_brightness_selected(SELF)],
+    )]
+    bar_scrollbright: nwg::TrackBar,
+
+    #[nwg_control(text: "50", h_align: nwg::HTextAlign::Left, v_align: nwg::VTextAlign::Top)]
+    #[nwg_layout_item(layout: grid, row: 6, col: 7)]
+    txt_scrollbright: nwg::Label,
+
+    /*
+     * Same brightness check box
+     */
+    #[nwg_control(text: "Same as logo")]
+    #[nwg_layout_item(layout: grid, row: 6, col: 8, col_span: 3)]
+    #[nwg_events(
+        MousePressLeftUp: [DeathAdderv2App::same_brightness_changed(SELF, EVT, EVT_DATA)],
+        OnKeyRelease: [DeathAdderv2App::same_brightness_changed(SELF, EVT, EVT_DATA)]
+    )]
+    chk_samebright: nwg::CheckBox,
 
     device: RefCell<Option<DeathAdderV2>>,
     config: RefCell<Config>,
@@ -233,6 +295,9 @@ impl DeathAdderv2App {
         self.bar_dpi.set_enabled(enabled);
         self.cmb_pollrate.set_enabled(enabled);
         self.chk_samecolor.set_enabled(enabled);
+        self.bar_logobright.set_enabled(enabled);
+        self.bar_scrollbright.set_enabled(enabled);
+        self.chk_samebright.set_enabled(enabled);
     }
 
     fn update_values(&self) {
@@ -258,22 +323,43 @@ impl DeathAdderv2App {
                         self.cmb_pollrate.set_enabled(false);
                     }
                 };
+
+                match dav2.get_logo_brightness() {
+                    Ok(b) => self.bar_logobright.set_pos(b as usize),
+                    Err(e) => {
+                        msgboxerror!("Failed to get logo brightness: {}", e);
+                        self.bar_logobright.set_enabled(false);
+                    }
+                };
+
+                match dav2.get_scroll_brightness() {
+                    Ok(b) => self.bar_scrollbright.set_pos(b as usize),
+                    Err(e) => {
+                        msgboxerror!("Failed to get scroll whell brightness: {}", e);
+                        self.bar_scrollbright.set_enabled(false);
+                    }
+                };
             },
 
             None => { // no device; set some defaults
                 self.bar_dpi.set_pos(self.bar_dpi.range_min());
                 self.cmb_pollrate.set_selection(None);
+                self.bar_logobright.set_pos(self.bar_logobright.range_min());
+                self.bar_scrollbright.set_pos(self.bar_scrollbright.range_min());
             },
         };
 
         // updates that need to happen irrespective of the result
         self.txt_dpi.set_text(&self.bar_dpi.pos().to_string());
+        self.txt_logobright.set_text(&self.bar_logobright.pos().to_string());
+        self.txt_scrollbright.set_text(&self.bar_scrollbright.pos().to_string());
 
         self.with_config(|cfg| {
             // can't take these from the device; assume they're what the config says
             self.set_logo_color(cfg.logo_color);
             self.set_scroll_color(cfg.scroll_color);
             self.set_same_color(cfg.same_color, true);
+            self.set_same_brightness(cfg.same_brightness, true);
         });
 
     }
@@ -429,8 +515,8 @@ impl DeathAdderv2App {
         }
 
         // unfortunately there is no 'state_changed' event so we get the
-        // mouse up and space key events which are before the state has
-        // actually changed so we invert it to get what will become
+        // mouse up and space key events which trigger before the state
+        // has actually changed so we negate it to get what will become
 
         let same = !from_check_state!(self.chk_samecolor.check_state());
         self.set_same_color(same, false);
@@ -449,6 +535,60 @@ impl DeathAdderv2App {
         }
     }
 
+    fn logo_brightness_selected(&self) {
+        let brightness = self.bar_logobright.pos() as u8;
+        self.txt_logobright.set_text(&brightness.to_string());
+        self.with_device(|dav2| dav2.set_logo_brightness(brightness));
+        self.with_config(|cfg| if cfg.same_brightness {
+            self.set_scroll_brightness(brightness as usize);
+        });
+    }
+
+    fn scroll_brightness_selected(&self) {
+        let brightness = self.bar_scrollbright.pos();
+        self.txt_scrollbright.set_text(&brightness.to_string());
+        self.with_device(|dav2| dav2.set_scroll_brightness(brightness as u8));
+    }
+
+    fn set_scroll_brightness(&self, brightness: usize) {
+        self.txt_scrollbright.set_text(&brightness.to_string());
+        self.bar_scrollbright.set_pos(brightness);
+        self.with_device(|dav2| dav2.set_scroll_brightness(brightness as u8));
+    }
+
+    fn same_brightness_changed(&self, evt: nwg::Event, evtdata: &nwg::EventData) {
+        // only interested in space key
+        if evt == nwg::Event::OnKeyRelease && evtdata.on_key() != 32u32 {
+            return
+        }
+
+        // unfortunately there is no 'state_changed' event so we get the
+        // mouse up and space key events which trigger before the state
+        // has actually changed so we negate it to get what will become
+
+        let same = !from_check_state!(self.chk_samebright.check_state());
+        self.set_same_brightness(same, false);
+        self.with_mut_config(|cfg| cfg.same_brightness = same);
+    }
+
+    /// Does not update the config
+    fn set_same_brightness(&self, same: bool, update_ui: bool) {
+        if update_ui {
+            self.chk_samebright.set_check_state(to_check_state!(same));
+        }
+
+        self.bar_scrollbright.set_enabled(!same);
+
+        if same {
+            self.set_scroll_brightness(self.bar_logobright.pos());
+        } else {
+            self.with_device(|dav2| match dav2.get_scroll_brightness() {
+                Ok(brightness) => self.set_scroll_brightness(brightness as usize),
+                Err(_) => ()
+            });
+        }
+    }
+
     fn window_close(&self) {
         _ = self.with_config(|cfg| cfg.save()).map_err(|e|{
             msgboxerror!("Failed to save config: {}", e);
@@ -456,17 +596,6 @@ impl DeathAdderv2App {
         nwg::stop_thread_dispatch();
     }
 }
-
-/*
- * We show a ChooseColor dialog and let the user pick the color
- * while previewing the current selection on the mouse itself.
- *
- * For this we need a) a separate thread (i.e. previewing thread) to update
- * the device and b) to define the color chooser's hook procedure (CCHOOKPROC)
- * in order to get the color values while the user is selecting and before they
- * press the ok button. (a) happens here, while (b) in color_chooser.rs.
- */
-static RGB_TO_SET: Mutex<Option<RGB8>> = Mutex::new(None);
 
 fn main() {
     _ = nwg::init().map_err(
@@ -482,17 +611,13 @@ fn main() {
     // default to false and if a valid device is selected they will be enabled
     app.set_device_controls_enabled(false);
 
-    // configure a few things on the trackbar
-    unsafe {
-        let hbar = HWND(app.bar_dpi.handle.hwnd().unwrap() as isize);
-        SendMessageA(hbar, TBM_SETLINESIZE, WPARAM(0), LPARAM(1000));
-        SendMessageA(hbar, TBM_SETPAGESIZE, WPARAM(0), LPARAM(5000));
-        SendMessageA(hbar, TBM_SETTICFREQ, WPARAM(2000usize), LPARAM(0));
+    // configure a few things on the trackbars
+    configure_trackbar(&app.bar_dpi, 1000, 5000);
+    configure_trackbar(&app.bar_logobright, 5, 20);
+    configure_trackbar(&app.bar_scrollbright, 5, 20);
 
-        let mut style = GetWindowLongA(hbar, GWL_STYLE);
-        style = style | (TBS_TOOLTIPS | TBS_BOTTOM | TBS_DOWNISLEFT | TBS_NOTIFYBEFOREMOVE) as i32;
-        SetWindowLongA(hbar, GWL_STYLE, style);
-    }
+    add_style(&app.chk_samebright.handle, BS_TOP);
+    // add_style(&app.bar_scrollbright.handle, BS_CENTER);
 
     let available_devices = DeathAdderV2::list().unwrap_or_else(
         |e| msgboxpanic!("Error querying DeathAdder v2 devices: {}", e)
@@ -505,83 +630,4 @@ fn main() {
         app.device_selected();
     }
     nwg::dispatch_thread_events();
-    return;
-
-    let dav2 = DeathAdderV2::new()
-        .unwrap_or_else(|e| msgboxpanic!("Error opening device: {}", e));
-
-    // this will be the master signal to end the device preview thread
-    let keep_previewing = Arc::new(Mutex::new(true));
-    let dav2_rc = Arc::new(dav2);
-    let preview_thread = {
-
-        // make a copy of the master signal and loop on it
-        let keep_previewing = Arc::clone(&keep_previewing);
-        let dav2_rc = Arc::clone(&dav2_rc);
-        thread::spawn(move || {
-
-            // save some resources by setting each color once
-            let mut last_set: Option<RGB8> = None;
-
-            while *keep_previewing.lock().unwrap() {
-
-                match *RGB_TO_SET.lock().unwrap() {
-                    // same as last set color: do nothing
-                    same if same == last_set => (),
-
-                    // would like this to be matched in arm above but it doesn't
-                    None => (),
-
-                    // some new color to preview
-                    Some(rgb) => {
-                        match (*dav2_rc).preview_static(rgb, rgb) {
-                            Ok(()) => last_set = Some(rgb),
-                            Err(_) => break
-                        }
-                    },
-                }
-
-                // don't overkill; 10ms interval is smooth enough
-                thread::sleep(Duration::from_millis(10));
-            }
-            // preview thread exit
-
-        }) // return the thread handle
-    };
-
-    // set initial chooser UI color based on config (if any)
-    let cfg = Config::load();
-    let initial = cfg.map(|cfg| cfg.logo_color);
-
-    let mut cdlg = ColorDialog::new();
-
-    // our 'change' event listener
-    let change_cb = Some(|_: &ColorDialog, color: &RGB8| {
-        // commit the RGB change for the previewing thread to pick up
-        let mut rgb = RGB_TO_SET.lock().unwrap();
-        *rgb = Some(*color);
-    });
-
-    let color = match cdlg.show(HWND(0), initial, change_cb) {
-        Some(color) => Some(color),
-        None => initial,
-    };
-
-    // make sure the thread has stopped previewing on the device
-    *keep_previewing.lock().unwrap() = false;
-    preview_thread.join().unwrap();
-
-    color.map(|rgb| {
-        _ = (*dav2_rc).set_logo_color(rgb)
-        .map_err(|e| msgboxpanic!("Error setting logo color: {}", e))
-        .and_then(|_| (*dav2_rc).set_scroll_color(rgb))
-        .map_err(|e| msgboxpanic!("Error setting scroll wheel color: {}", e));
-
-        _ = Config {
-            logo_color: rgb,
-            scroll_color: rgb,
-            same_color: true,
-        }.save().map_err(|e| msgboxpanic!("Failed to save config: {}", e));
-    });
-
 }

@@ -4,7 +4,7 @@ A tool to configure Razer DeathAdder v2 without Synapse and co. Does not support
 
 I just wanted static settings without having to run in the background 2-3 apps and 6 services that Razer provides. I don't know if it was just me, but every time I closed Synapse, the mouse would go back to those wave effects that were super annoying and catching the eye when typing or reading. (Also served as a reason to practice in rust a little bit; which I'm new to)
 
-Device protocol has been largely ported from [openrazer](https://github.com/openrazer/openrazer).
+Device protocol has been largely ported from [openrazer](https://github.com/openrazer/openrazer). GUI mostly built using [native-windows-gui](https://github.com/gabdube/native-windows-gui).
 
 So far supports the following:
 

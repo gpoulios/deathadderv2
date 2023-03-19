@@ -1,10 +1,19 @@
 # deathadderv2
 
-Set (a constant) color on the Razer DeathAdder v2. (while practising in rust)
+A tool to configure Razer DeathAdder v2 without Synapse and co. Does not support RGB effects other than static or profiles (at least not yet). I just wanted static settings without having to run  in the background 2-3 apps and 6 services that Razer provides. I don't know if it was just me, but every time I closed Synapse, the mouse would go back to those wave effects that were super annoying / catching the eye when typing or reading. (Also served as a reason to practice in rust a little bit; which I'm new to)
 
-A little utility for those of us that don't want to run 2-3 apps and 6 services (!!) just for keeping this mouse from changing colors like a christmas tree. I don't need the auto-switching of profiles that Synapse provides and (most if not all) of the other functionality I can have without running Razer's apps in the background.
+Device protocol has been largely ported from [openrazer](https://github.com/openrazer/openrazer). So far this tool supports the following:
 
-Device protocol largely ported from [openrazer](https://github.com/openrazer/openrazer). So far I've ported all of the functionality for this particular mouse except wave/breath/spectrum/whatnot effects. The plan is to write a small UI to control settings like DPI, poll rate and brightness before I integrate RGB effects, if ever.
+- DPI
+- Polling rate
+- Logo / Scroll color
+- Logo / Scroll brightness
+
+It doesn't support:
+
+- wave/breath/spectrum/whatnot effects
+- profiles
+- other devices
 
 ## Requirements
 
@@ -16,20 +25,11 @@ One way to install it is using [Zadig](https://zadig.akeo.ie/). You only need to
 
 ## Usage
 
-The tool comes in two forms, a console executable that you can use like so:
+The UI  should be self-explanatory. No need to keep running it in the background.
 
-```
-> deathadder-rgb-cli.exe [COLOR|LOGO_COLOR] [SCROLL_WHEEL_COLOR]
+![UI screenshot](screenshot.png?raw=true "UI screenshot")
 
-where *COLOR above should be in hex [0x/#]RGB[h] or [0x/#]RRGGBB[h] format.
-If no arguments are specified the saved color will be applied.
-If scroll wheel color is not specified, the specified color
-will be applied to both the logo and the scroll wheel.
-```
-
-and a GUI version that will just pop up a color picker prompt to preview and/or set both logo and scroll wheel colors to the same value.
-
-Contrary to all other settings, I have not found a way to retrieve the current color from the device so both apps will save the last applied color to a file under %APPDATA%/deathadder/config/default-config.toml, just so it doesn't reset every time one uses the GUI tool.
+Contrary to all other settings, I have not found a way to retrieve the current color from the device so the app will save the last applied color to a file under %APPDATA%/deathadder/config/default-config.toml, just so it doesn't reset every time one uses the tool.
 
 ---
 This project is licensed under the GPL.

@@ -4,7 +4,7 @@ default-members = ["gui"]
 
 [workspace.package]
 edition = "2021"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["George Poulios"]
 description = "A utility to control Razer DeathAdder v2 on Windows"
 readme = "./README.md"

@@ -1,19 +1,23 @@
 # deathadderv2
 
-A tool to configure Razer DeathAdder v2 without Synapse and co. Does not support RGB effects other than static or profiles (at least not yet). I just wanted static settings without having to run  in the background 2-3 apps and 6 services that Razer provides. I don't know if it was just me, but every time I closed Synapse, the mouse would go back to those wave effects that were super annoying / catching the eye when typing or reading. (Also served as a reason to practice in rust a little bit; which I'm new to)
+A tool to configure Razer DeathAdder v2 without Synapse and co. Does not support RGB effects or profiles (at least not yet).
 
-Device protocol has been largely ported from [openrazer](https://github.com/openrazer/openrazer). So far this tool supports the following:
+I just wanted static settings without having to run in the background 2-3 apps and 6 services that Razer provides. I don't know if it was just me, but every time I closed Synapse, the mouse would go back to those wave effects that were super annoying and catching the eye when typing or reading. (Also served as a reason to practice in rust a little bit; which I'm new to)
+
+Device protocol has been largely ported from [openrazer](https://github.com/openrazer/openrazer).
+
+So far supports the following:
 
 - DPI
 - Polling rate
-- Logo / Scroll color
-- Logo / Scroll brightness
+- Static logo / scroll wheel color
+- Logo / scroll wheel brightness
 
 It doesn't support:
 
-- wave/breath/spectrum/whatnot effects
-- profiles
-- other devices
+- Wave/breath/spectrum/whatnot effects
+- Profiles
+- Other devices
 
 ## Requirements
 

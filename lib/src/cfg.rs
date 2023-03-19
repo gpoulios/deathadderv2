@@ -3,7 +3,7 @@ use serde::{Serialize, Deserialize};
 use confy::ConfyError;
 use rgb::RGB8;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Config {
     pub same_color: bool,
     pub same_brightness: bool,

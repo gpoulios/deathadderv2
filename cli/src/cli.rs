@@ -4,31 +4,6 @@ use librazer::common::rgb_from_hex;
 use librazer::device::{DeathAdderV2, RazerMouse};
 
 fn main() {
-    // let dav2 = DeathAdderV2::new().expect("failed to open device");
-    // println!("{}", dav2);
-    // // dav2.set_dpi(10000, 10000);
-    // // dav2.set_poll_rate(librazer::common::PollingRate::Hz250);
-    // // println!("{:?}", dav2.get_dpi());
-    // // println!("{:?}", dav2.get_poll_rate());
-    // // dav2.set_dpi(20000, 20000);
-    // // dav2.set_poll_rate(librazer::common::PollingRate::Hz1000);
-    // // println!("{:?}", dav2.get_dpi());
-    // // println!("{:?}", dav2.get_poll_rate());
-
-    // let rgb1 = RGB8::from([0x00, 0xaa, 0xaa]);
-    // let rgb2 = RGB8::from([0xaa, 0xaa, 0x00]);
-    // // dav2.preview_static(rgb1, rgb2);
-    // dav2.set_logo_color(rgb2);
-    // dav2.set_scroll_color(rgb1);
-
-    // // let init_brightness = dav2.get_logo_brightness().unwrap();
-    // // println!("logo brightness: {:?}, scroll: {:?}", init_brightness, dav2.get_scroll_brightness());
-    // // dav2.set_logo_brightness(30);
-    // // dav2.set_scroll_brightness(30);
-    // // println!("logo brightness: {:?}, scroll: {:?}", dav2.get_logo_brightness(), dav2.get_scroll_brightness());
-
-    // return;
-
     let args: Vec<String> = std::env::args().collect();
 
     let parse_arg = |input: &str| -> RGB8 {
@@ -40,9 +15,11 @@ fn main() {
         }
     };
 
+    let cfgopt = Config::load();
+
     let (logo_color, scroll_color) = match args.len() {
         ..=1 => {
-            match Config::load() {
+            match cfgopt {
                 Some(cfg) => (cfg.logo_color, cfg.scroll_color),
                 None => panic!("failed to load configuration; please specify \
                     arguments manually")
@@ -69,6 +46,6 @@ fn main() {
     _ = Config {
         logo_color: logo_color,
         scroll_color: scroll_color,
-        same_color: true,
+        ..cfgopt.unwrap_or(Default::default())
     }.save().map_err(|e| panic!("failed to save config: {}", e));
 }

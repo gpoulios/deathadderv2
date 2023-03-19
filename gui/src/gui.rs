@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 use std::cell::RefCell;
 use windows::{
@@ -309,6 +309,17 @@ impl DeathAdderv2App {
                     Err(e) => {
                         msgboxerror!("Failed to get DPI: {}", e);
                         self.bar_dpi.set_enabled(false);
+                    }
+                };
+
+                match dav2.get_dpi_stages() {
+                    Ok((dpi_stages, current)) => {
+                        println!("{:?}", dpi_stages);
+                        println!("current: {}", current);
+                    },
+                    Err(e) => {
+                        msgboxerror!("Failed to get DPI stages: {}", e);
+                        // self.[...].set_enabled(false);
                     }
                 };
 

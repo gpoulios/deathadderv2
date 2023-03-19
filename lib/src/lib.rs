@@ -401,6 +401,49 @@ pub mod common {
         ])
     }
 
+    pub(crate) fn razer_chroma_misc_get_dpi_xy_stages(variable_storage: LedStorage) -> RazerReport {
+        RazerReport::new(0x04, 0x86, &[variable_storage as u8])
+    }
+
+    pub(crate) fn razer_chroma_misc_set_dpi_xy_stages(
+        variable_storage: LedStorage,
+        dpi_stages: &[(u16, u16)],
+        current: u8
+    ) -> RazerReport {
+        let num_stages = dpi_stages.len();
+        assert!(num_stages > 0, "num stages must be greater than 0");
+        assert!(num_stages < 6, "num stages cannot be more than 5");
+        let num_stages = num_stages as u8;
+
+        let current = current.clamp(1, num_stages);
+        let mut report = RazerReport::init(0x04, 0x06, 3 + num_stages * 7);
+        report.arguments[0] = variable_storage as u8;
+        report.arguments[1] = current;
+        report.arguments[2] = num_stages;
+
+        let mut report_idx = 3;
+        let mut stage_idx = 1;
+
+        for &(dpi_x, dpi_y) in dpi_stages {
+            // Keep the DPI within bounds
+            let dpi_x = dpi_x.clamp(100, 30000);
+            let dpi_y = dpi_y.clamp(100, 30000);
+
+            report.arguments[report_idx+0] = stage_idx;
+            report.arguments[report_idx+1] = ((dpi_x >> 8) & 0xFF) as u8;
+            report.arguments[report_idx+2] = (dpi_x & 0xFF) as u8;
+            report.arguments[report_idx+3] = ((dpi_y >> 8) & 0xFF) as u8;
+            report.arguments[report_idx+4] = (dpi_y & 0xFF) as u8;
+            report.arguments[report_idx+5] = 0x00;
+            report.arguments[report_idx+6] = 0x00;
+
+            stage_idx += 1;
+            report_idx += 7;
+        }
+
+        report
+    }
+
     pub(crate) fn razer_chroma_misc_get_polling_rate() -> RazerReport {
         RazerReport::init(0x00, 0x85, 0x01)
     }

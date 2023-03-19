@@ -173,6 +173,47 @@ pub trait RazerMouse: RazerDevice {
         Ok(())
     }
 
+    /// Return a vector of the DPI stages in (dpiX, dpiY) tuples, and an
+    /// index of the currently selected stage
+    fn get_dpi_stages(&self) -> USBResult<(Vec<(u16, u16)>, u8)> {
+        let mut request = razer_chroma_misc_get_dpi_xy_stages(LedStorage::NoStore);
+        let response = self.send_payload(&mut request)?;
+
+        // index reported by the device (at least DeathAdderV2) is 1-based
+        let current = response.arguments[1] - 1;
+        let num_stages = response.arguments[2];
+        let mut dpi_stages: Vec<(u16, u16)> = Vec::with_capacity(num_stages as usize);
+        let mut arg_idx = 3;
+        for _i in 1..=num_stages {
+            let dpi_x = ((response.arguments[arg_idx+1] as u16) << 8) |
+                              (response.arguments[arg_idx+2] as u16) & 0xff;
+            let dpi_y = ((response.arguments[arg_idx+3] as u16) << 8) |
+                              (response.arguments[arg_idx+4] as u16) & 0xff;
+            dpi_stages.push((dpi_x, dpi_y));
+            arg_idx += 7;
+        }
+
+        Ok((dpi_stages, current))
+    }
+
+    fn set_dpi_stages(
+        &self,
+        dpi_stages: &[(u16, u16)],
+        current: u8
+    ) -> USBResult<()> {
+        let mut dpi_stages: Vec<(u16, u16)> = dpi_stages.to_vec();
+        for (dpi_x, dpi_y) in &mut dpi_stages {
+            *dpi_x = (*dpi_x).clamp(self.min_dpi(), self.max_dpi());
+            *dpi_y = (*dpi_y).clamp(self.min_dpi(), self.max_dpi());
+        }
+
+        // device expects current index to be 1-based
+        let mut request = razer_chroma_misc_set_dpi_xy_stages(
+            LedStorage::NoStore, &dpi_stages, current + 1);
+        self.send_payload(&mut request)?;
+        Ok(())
+    }
+
     fn get_poll_rate(&self) -> USBResult<PollingRate> {
         let mut request = razer_chroma_misc_get_polling_rate();
         let response = self.send_payload(&mut request)?;

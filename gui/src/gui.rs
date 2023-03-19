@@ -550,6 +550,7 @@ impl DeathAdderv2App {
         self.with_device(|dav2| dav2.set_scroll_brightness(brightness as u8));
     }
 
+    /// Does not update the config
     fn set_scroll_brightness(&self, brightness: usize) {
         self.txt_scrollbright.set_text(&brightness.to_string());
         self.bar_scrollbright.set_pos(brightness);

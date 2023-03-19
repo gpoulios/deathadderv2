@@ -29,11 +29,11 @@ One way to install it is using [Zadig](https://zadig.akeo.ie/). You only need to
 
 ## Usage
 
-The UI  should be self-explanatory. No need to keep running it in the background.
+The UI  should be self-explanatory. No need to keep it running in the background.
 
 ![UI screenshot](screenshot.png?raw=true "UI screenshot")
 
-Contrary to all other settings, I have not found a way to retrieve the current color from the device so the app will save the last applied color to a file under %APPDATA%/deathadder/config/default-config.toml, just so it doesn't reset every time one uses the tool.
+Contrary to all other settings, I have not found a way to retrieve the current color from the device so the app will save the last applied color to a file under %APPDATA%/deathadder/config/default-config.toml, just so it doesn't reset every time it opens.
 
 ---
 This project is licensed under the GPL.

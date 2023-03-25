@@ -13,6 +13,7 @@ use windows::{
             WindowsAndMessaging::{SendMessageA, GetWindowLongA, SetWindowLongA,
                 GWL_STYLE, MessageBoxA, MB_OK, MB_ICONERROR, BS_TOP,
                 SetCursor, LoadCursorW, IDC_HAND, IDC_ARROW,
+                WM_GETMINMAXINFO, MINMAXINFO
             },
         },
     },
@@ -878,6 +879,23 @@ fn main() {
     for rad_stage in app.rad_dpistages() {
         add_style(&rad_stage.handle, BS_TOP);
     }
+
+    // set the minimum window size
+    _ = nwg::bind_raw_event_handler(&app.window.handle, 0x10000, |_hwnd, msg, _w, l| {
+        match msg {
+            WM_GETMINMAXINFO => {
+                let minmax_ptr = l as *mut MINMAXINFO;
+                unsafe {
+                    let mut minmax = &mut minmax_ptr.read();
+                    minmax.ptMinTrackSize.x = 710;
+                    minmax.ptMinTrackSize.y = 405;
+                    minmax_ptr.write(*minmax);
+                }
+            },
+            _ => {}
+        }
+        None
+    });
 
     let available_devices = DeathAdderV2::list().unwrap_or_else(
         |e| msgboxpanic!("Error querying DeathAdder v2 devices: {}", e)

@@ -18,8 +18,8 @@ use windows::{
 };
 use native_windows_gui as nwg;
 use native_windows_derive as nwd;
-use nwd::NwgUi;
-use nwg::NativeUi;
+use nwd::{NwgUi, NwgPartial};
+use nwg::{NativeUi, RadioButtonState};
 
 use rgb::RGB8;
 use librazer::{cfg::Config, device::UsbDevice, common::PollingRate};
@@ -95,12 +95,12 @@ macro_rules! from_check_state {
     };
 }
 
-fn configure_trackbar(bar: &nwg::TrackBar, line: isize, page: isize) {
+fn configure_trackbar(bar: &nwg::TrackBar, line: isize, page: isize, tick: usize) {
     unsafe {
         let hbar = HWND(bar.handle.hwnd().unwrap() as isize);
         SendMessageA(hbar, TBM_SETLINESIZE, WPARAM(0), LPARAM(line));
         SendMessageA(hbar, TBM_SETPAGESIZE, WPARAM(0), LPARAM(page));
-        SendMessageA(hbar, TBM_SETTICFREQ, WPARAM(line as usize), LPARAM(0));
+        SendMessageA(hbar, TBM_SETTICFREQ, WPARAM(tick), LPARAM(0));
         add_style(&bar.handle,
             (TBS_TOOLTIPS | TBS_BOTTOM | TBS_DOWNISLEFT | TBS_NOTIFYBEFOREMOVE) as i32);
     }
@@ -112,6 +112,32 @@ fn add_style(handle: &nwg::ControlHandle, style: i32) {
         let style = style | GetWindowLongA(hwnd, GWL_STYLE);
         SetWindowLongA(hwnd, GWL_STYLE, style);
     }
+}
+
+#[derive(Default, NwgPartial)]
+pub struct DpiStagesUI {
+    #[nwg_layout(margin: [0, 0, 0, 0], max_column: Some(5)/* , max_size: [1000, 150]*/)]
+    grid: nwg::GridLayout,
+
+    #[nwg_control(text: "2000", flags: "VISIBLE | GROUP")]
+    #[nwg_layout_item(layout: grid, col: 0)]
+    rad_dpi_1: nwg::RadioButton,
+
+    #[nwg_control(text: "5000")]
+    #[nwg_layout_item(layout: grid, col: 1)]
+    rad_dpi_2: nwg::RadioButton,
+
+    #[nwg_control(text: "10000")]
+    #[nwg_layout_item(layout: grid, col: 2)]
+    rad_dpi_3: nwg::RadioButton,
+
+    #[nwg_control(text: "15000")]
+    #[nwg_layout_item(layout: grid, col: 3)]
+    rad_dpi_4: nwg::RadioButton,
+
+    #[nwg_control(text: "20000")]
+    #[nwg_layout_item(layout: grid, col: 4)]
+    rad_dpi_5: nwg::RadioButton,
 }
 
 #[derive(Default, NwgUi)]
@@ -133,35 +159,73 @@ pub struct DeathAdderv2App {
     cmb_device: nwg::ComboBox<UsbDevice>,
 
     /*
-     * DPI
+     * DPI stages
      */
-    #[nwg_control(text: "DPI:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 1, col_span: 3)]
-    lbl_dpi: nwg::Label,
+    #[nwg_control(v_align: nwg::VTextAlign::Top, // has trouble aligning vertically
+        collection: vec!["1 DPI stage", "2 DPI stages", "3 DPI stages", "4 DPI stages", "5 DPI stages"],
+        selected_index: Some(0))]
+    #[nwg_layout_item(layout: grid, row: 1, col: 1, col_span: 2)]
+    #[nwg_events( OnComboxBoxSelection: [DeathAdderv2App::numstages_selected(SELF)])]
+    cmb_numstages: nwg::ComboBox<&'static str>,
+
+    #[nwg_control(text: "Stage DPI:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
+    #[nwg_layout_item(layout: grid, row: 2, col_span: 3)]
+    lbl_stagedpi: nwg::Label,
+
+    #[nwg_control(flags: "VISIBLE")]
+    #[nwg_layout_item(layout: grid, row: 1, col: 3, col_span: 6)]
+    frm_stages: nwg::Frame,
+
+    #[nwg_partial(parent: frm_stages)]
+    #[nwg_events(
+        (rad_dpi_1, OnButtonClick): [DeathAdderv2App::stage_selected(SELF)],
+        (rad_dpi_2, OnButtonClick): [DeathAdderv2App::stage_selected(SELF)],
+        (rad_dpi_3, OnButtonClick): [DeathAdderv2App::stage_selected(SELF)],
+        (rad_dpi_4, OnButtonClick): [DeathAdderv2App::stage_selected(SELF)],
+        (rad_dpi_5, OnButtonClick): [DeathAdderv2App::stage_selected(SELF)],
+    )]
+    par_stages: DpiStagesUI,
 
     #[nwg_control(range: Some(100..20000), pos: Some(20000))]
-    #[nwg_layout_item(layout: grid, row: 1, col: 3, col_span: 5)]
+    #[nwg_layout_item(layout: grid, row: 2, col: 3, col_span: 5)]
     #[nwg_events(
         // Unfortunately 'TrackBarUpdated' doesn't trigger with keyboard or
         // scroll, so we update on each change, even if during mouse drag
         // this might be spamming the device
-        OnHorizontalScroll: [DeathAdderv2App::dpi_selected(SELF)],
+        OnHorizontalScroll: [DeathAdderv2App::stage_dpi_selected(SELF)],
     )]
-    bar_dpi: nwg::TrackBar,
+    bar_stagedpi: nwg::TrackBar,
+
+    /*
+     * Current DPI
+     */
+    #[nwg_control(text: "Current DPI:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
+    #[nwg_layout_item(layout: grid, row: 3, col_span: 3)]
+    lbl_currdpi: nwg::Label,
+
+    #[nwg_control(range: Some(100..20000), pos: Some(20000))]
+    #[nwg_layout_item(layout: grid, row: 3, col: 3, col_span: 5)]
+    #[nwg_events(
+        // Unfortunately 'TrackBarUpdated' doesn't trigger with keyboard or
+        // scroll, so we update on each change, even if during mouse drag
+        // this might be spamming the device
+        OnHorizontalScroll: [DeathAdderv2App::current_dpi_selected(SELF)],
+    )]
+    bar_currdpi: nwg::TrackBar,
 
     #[nwg_control(text: "20000", h_align: nwg::HTextAlign::Left, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 1, col: 8, col_span: 2)]
-    txt_dpi: nwg::Label,
+    #[nwg_layout_item(layout: grid, row: 3, col: 8, col_span: 2)]
+    txt_currdpi: nwg::Label,
 
     /*
      * Polling rate
      */
     #[nwg_control(text: "Polling rate:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 2, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 4, col_span: 3)]
     lbl_pollrate: nwg::Label,
 
     #[nwg_control(collection: PollingRate::all(), v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 2, col: 3, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 4, col: 3, col_span: 2)]
     #[nwg_events( OnComboxBoxSelection: [DeathAdderv2App::pollrate_selected(SELF)])]
     cmb_pollrate: nwg::ComboBox<PollingRate>,
 
@@ -169,11 +233,11 @@ pub struct DeathAdderv2App {
      * Logo color
      */
     #[nwg_control(text: "Logo color:", h_align: nwg::HTextAlign::Right)]
-    #[nwg_layout_item(layout: grid, row: 3, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 5, col_span: 3)]
     lbl_logocolor: nwg::Label,
 
     #[nwg_control(text: "", line_height: Some(20))]
-    #[nwg_layout_item(layout: grid, row: 3, col: 3, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 5, col: 3, col_span: 2)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::logo_color_clicked(SELF)],
         OnMouseMove: [DeathAdderv2App::set_cursor_hand(SELF)],
@@ -184,22 +248,19 @@ pub struct DeathAdderv2App {
      * Scroll color
      */
     #[nwg_control(text: "Scroll wheel color:", h_align: nwg::HTextAlign::Right)]
-    #[nwg_layout_item(layout: grid, row: 4, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 6, col_span: 3)]
     lbl_scrollcolor: nwg::Label,
 
     #[nwg_control(text: "", line_height: Some(20))]
-    #[nwg_layout_item(layout: grid, row: 4, col: 3, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 6, col: 3, col_span: 2)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::scroll_color_clicked(SELF)],
         OnMouseMove: [DeathAdderv2App::set_cursor_hand(SELF)],
     )]
     btn_scrollcolor: nwg::RichLabel,
 
-    /*
-     * Same color check box
-     */
     #[nwg_control(text: "Same as logo")]
-    #[nwg_layout_item(layout: grid, row: 4, col: 5, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 6, col: 5, col_span: 3)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::same_color_changed(SELF, EVT, EVT_DATA)],
         OnKeyRelease: [DeathAdderv2App::same_color_changed(SELF, EVT, EVT_DATA)]
@@ -210,11 +271,11 @@ pub struct DeathAdderv2App {
      * Logo brightness
      */
     #[nwg_control(text: "Logo brightness:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 5, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 7, col_span: 3)]
     lbl_logobright: nwg::Label,
 
     #[nwg_control(range: Some(0..100), pos: Some(50))]
-    #[nwg_layout_item(layout: grid, row: 5, col: 3, col_span: 4)]
+    #[nwg_layout_item(layout: grid, row: 7, col: 3, col_span: 4)]
     #[nwg_events(
         // Unfortunately 'TrackBarUpdated' doesn't trigger with keyboard or
         // scroll, so we update on each change, even if during mouse drag
@@ -224,18 +285,18 @@ pub struct DeathAdderv2App {
     bar_logobright: nwg::TrackBar,
 
     #[nwg_control(text: "50", h_align: nwg::HTextAlign::Left, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 5, col: 7)]
+    #[nwg_layout_item(layout: grid, row: 7, col: 7)]
     txt_logobright: nwg::Label,
 
     /*
      * Scroll brightness
      */
     #[nwg_control(text: "Scroll wheel brightness:", h_align: nwg::HTextAlign::Right, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 6, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 8, col_span: 3)]
     lbl_scrollbright: nwg::Label,
 
     #[nwg_control(range: Some(0..100), pos: Some(50))]
-    #[nwg_layout_item(layout: grid, row: 6, col: 3, col_span: 4)]
+    #[nwg_layout_item(layout: grid, row: 8, col: 3, col_span: 4)]
     #[nwg_events(
         // Unfortunately 'TrackBarUpdated' doesn't trigger with keyboard or
         // scroll, so we update on each change, even if during mouse drag
@@ -245,14 +306,14 @@ pub struct DeathAdderv2App {
     bar_scrollbright: nwg::TrackBar,
 
     #[nwg_control(text: "50", h_align: nwg::HTextAlign::Left, v_align: nwg::VTextAlign::Top)]
-    #[nwg_layout_item(layout: grid, row: 6, col: 7)]
+    #[nwg_layout_item(layout: grid, row: 8, col: 7)]
     txt_scrollbright: nwg::Label,
 
     /*
      * Same brightness check box
      */
     #[nwg_control(text: "Same as logo")]
-    #[nwg_layout_item(layout: grid, row: 6, col: 8, col_span: 3)]
+    #[nwg_layout_item(layout: grid, row: 8, col: 8, col_span: 3)]
     #[nwg_events(
         MousePressLeftUp: [DeathAdderv2App::same_brightness_changed(SELF, EVT, EVT_DATA)],
         OnKeyRelease: [DeathAdderv2App::same_brightness_changed(SELF, EVT, EVT_DATA)]
@@ -261,6 +322,7 @@ pub struct DeathAdderv2App {
 
     device: RefCell<Option<DeathAdderV2>>,
     config: RefCell<Config>,
+    events_enabled: RefCell<bool>,
 }
 
 impl DeathAdderv2App {
@@ -291,8 +353,18 @@ impl DeathAdderv2App {
         cfg_cb(&mut (*cfg))
     }
 
+    fn rad_dpistages(&self) -> Vec<&nwg::RadioButton> {
+        vec![&self.par_stages.rad_dpi_1,
+            &self.par_stages.rad_dpi_2,
+            &self.par_stages.rad_dpi_3,
+            &self.par_stages.rad_dpi_4,
+            &self.par_stages.rad_dpi_5]
+    }
+
     fn set_device_controls_enabled(&self, enabled: bool) {
-        self.bar_dpi.set_enabled(enabled);
+        self.frm_stages.set_enabled(enabled);
+        self.bar_stagedpi.set_enabled(enabled);
+        self.bar_currdpi.set_enabled(enabled);
         self.cmb_pollrate.set_enabled(enabled);
         self.chk_samecolor.set_enabled(enabled);
         self.bar_logobright.set_enabled(enabled);
@@ -301,25 +373,47 @@ impl DeathAdderv2App {
     }
 
     fn update_values(&self) {
+        // we will be modifying controls here; some of them fire 'change'
+        // events while we do so; we don't want that here
+        self.events_enabled.replace(false);
+
         match self.device.borrow().as_ref() {
             Some(dav2) => {
 
-                match dav2.get_dpi() {
-                    Ok((dpi_x, _)) => self.bar_dpi.set_pos(dpi_x as usize),
-                    Err(e) => {
-                        msgboxerror!("Failed to get DPI: {}", e);
-                        self.bar_dpi.set_enabled(false);
-                    }
-                };
-
                 match dav2.get_dpi_stages() {
                     Ok((dpi_stages, current)) => {
-                        println!("{:?}", dpi_stages);
-                        println!("current: {}", current);
+                        self.cmb_numstages.set_selection(Some(dpi_stages.len()-1));
+                        let rad_stages = self.rad_dpistages();
+                        let rad_stage = rad_stages[current as usize];
+                        rad_stage.set_check_state(nwg::RadioButtonState::Checked);
+
+                        let mut stages = dpi_stages.iter();
+                        for rad in rad_stages {
+                            match stages.next() {
+                                Some(&(dpi, _)) => {
+                                    rad.set_visible(true);
+                                    rad.set_text(&dpi.to_string());
+                                },
+                                None => {
+                                    rad.set_visible(false);
+                                },
+                            }
+                        }
+
+                        self.bar_stagedpi.set_pos(dpi_stages[current as usize].0 as usize);
                     },
                     Err(e) => {
                         msgboxerror!("Failed to get DPI stages: {}", e);
-                        // self.[...].set_enabled(false);
+                        self.frm_stages.set_enabled(false);
+                        self.bar_stagedpi.set_enabled(false);
+                    }
+                };
+
+                match dav2.get_dpi() {
+                    Ok((dpi, _)) => self.bar_currdpi.set_pos(dpi as usize),
+                    Err(e) => {
+                        msgboxerror!("Failed to get current DPI: {}", e);
+                        self.bar_currdpi.set_enabled(false);
                     }
                 };
 
@@ -353,7 +447,7 @@ impl DeathAdderv2App {
             },
 
             None => { // no device; set some defaults
-                self.bar_dpi.set_pos(self.bar_dpi.range_min());
+                self.bar_stagedpi.set_pos(self.bar_stagedpi.range_min());
                 self.cmb_pollrate.set_selection(None);
                 self.bar_logobright.set_pos(self.bar_logobright.range_min());
                 self.bar_scrollbright.set_pos(self.bar_scrollbright.range_min());
@@ -361,7 +455,7 @@ impl DeathAdderv2App {
         };
 
         // updates that need to happen irrespective of the result
-        self.txt_dpi.set_text(&self.bar_dpi.pos().to_string());
+        self.txt_currdpi.set_text(&self.bar_currdpi.pos().to_string());
         self.txt_logobright.set_text(&self.bar_logobright.pos().to_string());
         self.txt_scrollbright.set_text(&self.bar_scrollbright.pos().to_string());
 
@@ -373,9 +467,15 @@ impl DeathAdderv2App {
             self.set_same_brightness(cfg.same_brightness, true);
         });
 
+        // re-enable events
+        self.events_enabled.replace(true);
     }
 
     fn device_selected(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
         let collection = self.cmb_device.collection();
         let dev = self.cmb_device.selection().and_then(|i| collection.get(i));
         let dav2 = dev.and_then(|d| {
@@ -393,13 +493,129 @@ impl DeathAdderv2App {
         self.update_values();
     }
 
-    fn dpi_selected(&self) {
-        let dpi = self.bar_dpi.pos() as u16;
-        self.txt_dpi.set_text(&self.bar_dpi.pos().to_string());
+    fn numstages_selected(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
+        _ = self.cmb_numstages.selection().and_then(|index| {
+            let num_stages = index + 1;
+            let rad_stages = self.rad_dpistages();
+            let mut stages: Vec<(u16, u16)> = Vec::new();
+            let mut i = 0;
+            let mut current = 0;
+            for &rad_stage in rad_stages.iter() {
+                if i < num_stages {
+                    rad_stage.set_visible(true);
+                    let dpi = rad_stage.text().parse::<u16>().unwrap();
+                    stages.push((dpi, dpi));
+                    if rad_stage.check_state() == nwg::RadioButtonState::Checked {
+                        current = i;
+                    }
+                } else {
+                    rad_stage.set_visible(false);
+                    if rad_stage.check_state() == nwg::RadioButtonState::Checked {
+                        rad_stage.set_check_state(nwg::RadioButtonState::Unchecked);
+                        current = num_stages - 1;
+                    }
+                }
+
+                i += 1;
+            }
+
+            rad_stages[current].set_check_state(nwg::RadioButtonState::Checked);
+            self.bar_stagedpi.set_pos(stages.get(current).unwrap().0 as usize);
+
+            // update this since the device will be returning as current DPI the
+            // one we set through the stages API
+            self.set_current_dpi_ui(self.bar_stagedpi.pos());
+            self.with_device(|dav2| dav2.set_dpi_stages(&stages, current as u8))
+        });
+    }
+
+    fn stage_selected(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
+        let rad_stages = self.rad_dpistages();
+        let mut stages: Vec<(u16, u16)> = Vec::new();
+        let mut current = 0;
+        let mut i = 0;
+        for rad_stage in rad_stages {
+            if !rad_stage.visible() {
+                break;
+            }
+
+            let dpi = rad_stage.text().parse::<u16>().unwrap();
+            stages.push((dpi, dpi));
+            if rad_stage.check_state() == nwg::RadioButtonState::Checked {
+                current = i;
+                self.bar_stagedpi.set_pos(dpi as usize);
+            }
+
+            i += 1;
+        }
+
+        // update this since the device will be returning as current DPI the
+        // one we set through the stages API
+        self.set_current_dpi_ui(self.bar_stagedpi.pos());
+        self.with_device(|dav2| dav2.set_dpi_stages(&stages, current));
+    }
+
+    fn stage_dpi_selected(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
+        let rad_stages = self.rad_dpistages();
+        let mut stages: Vec<(u16, u16)> = Vec::new();
+        let mut current = 0;
+        let mut i = 0;
+        for rad_stage in rad_stages {
+            if !rad_stage.visible() {
+                break;
+            }
+
+            if rad_stage.check_state() == nwg::RadioButtonState::Checked {
+                current = i;
+                let dpi = self.bar_stagedpi.pos() as u16;
+                rad_stage.set_text(&dpi.to_string());
+                stages.push((dpi, dpi));
+            } else {
+                let dpi = rad_stage.text().parse::<u16>().unwrap();
+                stages.push((dpi, dpi));
+            }
+
+            i += 1;
+        }
+
+        self.set_current_dpi_ui(self.bar_stagedpi.pos());
+        self.with_device(|dav2| dav2.set_dpi_stages(&stages, current));
+    }
+
+    fn current_dpi_selected(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
+        let dpi = self.bar_currdpi.pos() as u16;
+        self.txt_currdpi.set_text(&self.bar_currdpi.pos().to_string());
         self.with_device(|dav2| dav2.set_dpi(dpi, dpi));
     }
 
+    fn set_current_dpi_ui(&self, dpi: usize) {
+        self.events_enabled.replace(false);
+        self.bar_currdpi.set_pos(dpi);
+        self.txt_currdpi.set_text(&self.bar_currdpi.pos().to_string());
+        self.events_enabled.replace(true);
+    }
+
     fn pollrate_selected(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
         let collection = self.cmb_pollrate.collection();
         self.cmb_pollrate.selection()
             .and_then(|i| collection.get(i))
@@ -421,6 +637,10 @@ impl DeathAdderv2App {
     }
 
     fn logo_color_clicked(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
         self.with_mut_config(|cfg| {
             self.with_device(|dav2| {
 
@@ -465,6 +685,10 @@ impl DeathAdderv2App {
     }
 
     fn scroll_color_clicked(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
         self.with_mut_config(|cfg| {
             self.with_device(|dav2| {
 
@@ -520,6 +744,10 @@ impl DeathAdderv2App {
     }
 
     fn same_color_changed(&self, evt: nwg::Event, evtdata: &nwg::EventData) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
         // only interested in space key
         if evt == nwg::Event::OnKeyRelease && evtdata.on_key() != 32u32 {
             return
@@ -547,6 +775,10 @@ impl DeathAdderv2App {
     }
 
     fn logo_brightness_selected(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
         let brightness = self.bar_logobright.pos() as u8;
         self.txt_logobright.set_text(&brightness.to_string());
         self.with_device(|dav2| dav2.set_logo_brightness(brightness));
@@ -556,6 +788,10 @@ impl DeathAdderv2App {
     }
 
     fn scroll_brightness_selected(&self) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
         let brightness = self.bar_scrollbright.pos();
         self.txt_scrollbright.set_text(&brightness.to_string());
         self.with_device(|dav2| dav2.set_scroll_brightness(brightness as u8));
@@ -563,12 +799,18 @@ impl DeathAdderv2App {
 
     /// Does not update the config
     fn set_scroll_brightness(&self, brightness: usize) {
+        self.events_enabled.replace(false);
         self.txt_scrollbright.set_text(&brightness.to_string());
         self.bar_scrollbright.set_pos(brightness);
         self.with_device(|dav2| dav2.set_scroll_brightness(brightness as u8));
+        self.events_enabled.replace(true);
     }
 
     fn same_brightness_changed(&self, evt: nwg::Event, evtdata: &nwg::EventData) {
+        if !*self.events_enabled.borrow() {
+            return;
+        }
+
         // only interested in space key
         if evt == nwg::Event::OnKeyRelease && evtdata.on_key() != 32u32 {
             return
@@ -618,18 +860,19 @@ fn main() {
     let app = DeathAdderv2App::build_ui(Default::default())
         .unwrap_or_else(|e| msgboxpanic!("Failed to build UI: {}", e));
 
+    app.events_enabled.replace(true);
     app.config.replace(Config::load().unwrap_or(Config::default()));
 
     // default to false and if a valid device is selected they will be enabled
     app.set_device_controls_enabled(false);
 
     // configure a few things on the trackbars
-    configure_trackbar(&app.bar_dpi, 1000, 5000);
-    configure_trackbar(&app.bar_logobright, 5, 20);
-    configure_trackbar(&app.bar_scrollbright, 5, 20);
+    configure_trackbar(&app.bar_stagedpi, 1, 1000, 1000);
+    configure_trackbar(&app.bar_currdpi, 1, 1000, 1000);
+    configure_trackbar(&app.bar_logobright, 1, 5, 5);
+    configure_trackbar(&app.bar_scrollbright, 1, 5, 5);
 
     add_style(&app.chk_samebright.handle, BS_TOP);
-    // add_style(&app.bar_scrollbright.handle, BS_CENTER);
 
     let available_devices = DeathAdderV2::list().unwrap_or_else(
         |e| msgboxpanic!("Error querying DeathAdder v2 devices: {}", e)

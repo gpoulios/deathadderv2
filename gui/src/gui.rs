@@ -12,7 +12,8 @@ use windows::{
             },
             WindowsAndMessaging::{SendMessageA, GetWindowLongA, SetWindowLongA,
                 GWL_STYLE, MessageBoxA, MB_OK, MB_ICONERROR, BS_TOP,
-                SetCursor, LoadCursorW, IDC_HAND, IDC_ARROW},
+                SetCursor, LoadCursorW, IDC_HAND, IDC_ARROW,
+            },
         },
     },
 };
@@ -142,7 +143,7 @@ pub struct DpiStagesUI {
 
 #[derive(Default, NwgUi)]
 pub struct DeathAdderv2App {
-    #[nwg_control(size: (700, 310), center: true, title: "Razer DeathAdder v2 configuration")]
+    #[nwg_control(size: (700, 400), center: true, title: "Razer DeathAdder v2 configuration")]
     #[nwg_events( OnWindowClose: [DeathAdderv2App::window_close(SELF)])]
     window: nwg::Window,
 
@@ -385,7 +386,7 @@ impl DeathAdderv2App {
                         self.cmb_numstages.set_selection(Some(dpi_stages.len()-1));
                         let rad_stages = self.rad_dpistages();
                         let rad_stage = rad_stages[current as usize];
-                        rad_stage.set_check_state(nwg::RadioButtonState::Checked);
+                        rad_stage.set_check_state(RadioButtonState::Checked);
 
                         let mut stages = dpi_stages.iter();
                         for rad in rad_stages {
@@ -509,13 +510,13 @@ impl DeathAdderv2App {
                     rad_stage.set_visible(true);
                     let dpi = rad_stage.text().parse::<u16>().unwrap();
                     stages.push((dpi, dpi));
-                    if rad_stage.check_state() == nwg::RadioButtonState::Checked {
+                    if rad_stage.check_state() == RadioButtonState::Checked {
                         current = i;
                     }
                 } else {
                     rad_stage.set_visible(false);
-                    if rad_stage.check_state() == nwg::RadioButtonState::Checked {
-                        rad_stage.set_check_state(nwg::RadioButtonState::Unchecked);
+                    if rad_stage.check_state() == RadioButtonState::Checked {
+                        rad_stage.set_check_state(RadioButtonState::Unchecked);
                         current = num_stages - 1;
                     }
                 }
@@ -523,7 +524,7 @@ impl DeathAdderv2App {
                 i += 1;
             }
 
-            rad_stages[current].set_check_state(nwg::RadioButtonState::Checked);
+            rad_stages[current].set_check_state(RadioButtonState::Checked);
             self.bar_stagedpi.set_pos(stages.get(current).unwrap().0 as usize);
 
             // update this since the device will be returning as current DPI the
@@ -549,7 +550,7 @@ impl DeathAdderv2App {
 
             let dpi = rad_stage.text().parse::<u16>().unwrap();
             stages.push((dpi, dpi));
-            if rad_stage.check_state() == nwg::RadioButtonState::Checked {
+            if rad_stage.check_state() == RadioButtonState::Checked {
                 current = i;
                 self.bar_stagedpi.set_pos(dpi as usize);
             }
@@ -577,7 +578,7 @@ impl DeathAdderv2App {
                 break;
             }
 
-            if rad_stage.check_state() == nwg::RadioButtonState::Checked {
+            if rad_stage.check_state() == RadioButtonState::Checked {
                 current = i;
                 let dpi = self.bar_stagedpi.pos() as u16;
                 rad_stage.set_text(&dpi.to_string());
@@ -872,7 +873,11 @@ fn main() {
     configure_trackbar(&app.bar_logobright, 1, 5, 5);
     configure_trackbar(&app.bar_scrollbright, 1, 5, 5);
 
+    // v_align some controls that nwg does provide the option
     add_style(&app.chk_samebright.handle, BS_TOP);
+    for rad_stage in app.rad_dpistages() {
+        add_style(&rad_stage.handle, BS_TOP);
+    }
 
     let available_devices = DeathAdderV2::list().unwrap_or_else(
         |e| msgboxpanic!("Error querying DeathAdder v2 devices: {}", e)

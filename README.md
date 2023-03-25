@@ -8,7 +8,7 @@ Device protocol has been largely ported from [openrazer](https://github.com/open
 
 So far supports the following:
 
-- DPI
+- DPI and DPI stages
 - Polling rate
 - Static logo / scroll wheel color
 - Logo / scroll wheel brightness

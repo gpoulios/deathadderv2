@@ -7,7 +7,7 @@ authors = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-rusb = "0.9"
+rusb = { workspace = true }
 serde = { version = "1.0.152", features = ["derive"] }
 rgb = { workspace = true, features = ["serde"] }
 confy = "0.5.1"

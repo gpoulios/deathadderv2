@@ -1,6 +1,10 @@
 #![windows_subsystem = "windows"]
 
-use std::cell::RefCell;
+use std::sync::Arc;
+use std::ptr;
+use std::{cell::RefCell, sync::Mutex};
+use std::thread;
+use hidapi_rusb::{HidError, HidApi, HidDevice};
 use windows::{
     core::{s, PCSTR},
     Win32::{
@@ -13,7 +17,7 @@ use windows::{
             WindowsAndMessaging::{SendMessageA, GetWindowLongA, SetWindowLongA,
                 GWL_STYLE, MessageBoxA, MB_OK, MB_ICONERROR, BS_TOP,
                 SetCursor, LoadCursorW, IDC_HAND, IDC_ARROW,
-                WM_GETMINMAXINFO, MINMAXINFO
+                WM_GETMINMAXINFO, MINMAXINFO,
             },
         },
     },
@@ -25,7 +29,7 @@ use nwg::{NativeUi, RadioButtonState};
 
 use rgb::RGB8;
 use librazer::{cfg::Config, device::UsbDevice, common::PollingRate};
-use librazer::device::{DeathAdderV2, RazerMouse};
+use librazer::device::{DeathAdderV2, RazerDevice, RazerMouse};
 
 pub mod color_chooser;
 use color_chooser::ColorDialog;
@@ -322,9 +326,21 @@ pub struct DeathAdderv2App {
     )]
     chk_samebright: nwg::CheckBox,
 
+    /*
+     * Events coming from the device
+     */
+    #[nwg_control]
+    #[nwg_events(OnNotice: [DeathAdderv2App::update_dpi_selection])]
+    dev_dpi_notice: nwg::Notice,
+    dev_dpi_thread: RefCell<Option<thread::JoinHandle<Result<(), HidError>>>>,
+    dev_dpi_keepalive: RefCell<Arc<Mutex<bool>>>,
+
+    /*
+     * Other members
+     */
     device: RefCell<Option<DeathAdderV2>>,
     config: RefCell<Config>,
-    events_enabled: RefCell<bool>,
+    ui_events_enabled: RefCell<bool>,
 }
 
 impl DeathAdderv2App {
@@ -365,6 +381,7 @@ impl DeathAdderv2App {
 
     fn set_device_controls_enabled(&self, enabled: bool) {
         self.frm_stages.set_enabled(enabled);
+        self.cmb_numstages.set_enabled(enabled);
         self.bar_stagedpi.set_enabled(enabled);
         self.bar_currdpi.set_enabled(enabled);
         self.cmb_pollrate.set_enabled(enabled);
@@ -374,42 +391,80 @@ impl DeathAdderv2App {
         self.chk_samebright.set_enabled(enabled);
     }
 
-    fn update_values(&self) {
+    // mainly called by the device DPI listener
+    fn update_dpi_selection(&self) {
+        if !*self.ui_events_enabled.borrow() {
+            return;
+        }
+
         // we will be modifying controls here; some of them fire 'change'
         // events while we do so; we don't want that here
-        self.events_enabled.replace(false);
+        self.ui_events_enabled.replace(false);
+
+        self.with_device(|dav2| {
+            match dav2.get_dpi_stages() {
+                Ok((dpi_stages, current)) => {
+                    let rad_stages = self.rad_dpistages();
+                    let ui_current = rad_stages.iter().position(|&rad|
+                        rad.check_state() == RadioButtonState::Checked
+                    ).unwrap_or(100);
+
+                    // assume no other app is changing the stages in parallel
+                    // in other words: only interested in device DPI
+                    // button-triggered events
+                    if ui_current == current as usize {
+                        return;
+                    }
+
+                    self.cmb_numstages.set_selection(Some(dpi_stages.len()-1));
+                    let mut i = 0;
+                    let mut stages = dpi_stages.iter();
+                    for rad in rad_stages {
+                        match stages.next() {
+                            Some(&(dpi, _)) => {
+                                rad.set_visible(true);
+                                rad.set_text(&dpi.to_string());
+                            },
+                            None => {
+                                rad.set_visible(false);
+                            },
+                        }
+
+                        rad.set_check_state(if i == current {
+                            RadioButtonState::Checked
+                        } else {
+                            RadioButtonState::Unchecked
+                        });
+                        i += 1;
+                    }
+
+                    if ui_current != current as usize {
+                        self.set_stage_dpi_ui(dpi_stages[current as usize].0 as usize);
+                    }
+                },
+                Err(e) => {
+                    msgboxerror!("Failed to get DPI stages: {}", e);
+                    self.frm_stages.set_enabled(false);
+                    self.bar_stagedpi.set_enabled(false);
+                }
+            };
+        });
+
+        // re-enable events
+        self.ui_events_enabled.replace(true);
+    }
+
+    fn update_ui_values(&self) {
+        self.update_dpi_selection();
+
+        // we will be modifying controls here; some of them fire 'change'
+        // events while we do so; we don't want that here
+        let ui_events_enabled = self.ui_events_enabled.replace(false);
+
+        self.set_device_controls_enabled(self.device.borrow().is_some());
 
         match self.device.borrow().as_ref() {
             Some(dav2) => {
-
-                match dav2.get_dpi_stages() {
-                    Ok((dpi_stages, current)) => {
-                        self.cmb_numstages.set_selection(Some(dpi_stages.len()-1));
-                        let rad_stages = self.rad_dpistages();
-                        let rad_stage = rad_stages[current as usize];
-                        rad_stage.set_check_state(RadioButtonState::Checked);
-
-                        let mut stages = dpi_stages.iter();
-                        for rad in rad_stages {
-                            match stages.next() {
-                                Some(&(dpi, _)) => {
-                                    rad.set_visible(true);
-                                    rad.set_text(&dpi.to_string());
-                                },
-                                None => {
-                                    rad.set_visible(false);
-                                },
-                            }
-                        }
-
-                        self.bar_stagedpi.set_pos(dpi_stages[current as usize].0 as usize);
-                    },
-                    Err(e) => {
-                        msgboxerror!("Failed to get DPI stages: {}", e);
-                        self.frm_stages.set_enabled(false);
-                        self.bar_stagedpi.set_enabled(false);
-                    }
-                };
 
                 match dav2.get_dpi() {
                     Ok((dpi, _)) => self.bar_currdpi.set_pos(dpi as usize),
@@ -449,7 +504,7 @@ impl DeathAdderv2App {
             },
 
             None => { // no device; set some defaults
-                self.bar_stagedpi.set_pos(self.bar_stagedpi.range_min());
+                self.set_stage_dpi_ui(self.bar_stagedpi.range_min());
                 self.cmb_pollrate.set_selection(None);
                 self.bar_logobright.set_pos(self.bar_logobright.range_min());
                 self.bar_scrollbright.set_pos(self.bar_scrollbright.range_min());
@@ -470,14 +525,93 @@ impl DeathAdderv2App {
         });
 
         // re-enable events
-        self.events_enabled.replace(true);
+        self.ui_events_enabled.replace(ui_events_enabled);
+    }
+
+    fn spawn_dev_dpi_listener_thread(&self, dav2: &DeathAdderV2) {
+        let vid = dav2.vid();
+        let pid = dav2.pid();
+        // wish we could use the serial to pick the specific device
+        // but hidapi (or windows?) won't report the serial so i
+        // don't have a way to match it; In any case, even if more than
+        // one DeathAdderV2s are connected, it doesn't harm to get an
+        // extra event here and there and make an extra update in the UI
+
+        self.dev_dpi_keepalive.replace(Arc::new(Mutex::new(true)));
+        let keepalive = Arc::clone(&self.dev_dpi_keepalive.borrow());
+        let sender = self.dev_dpi_notice.sender();
+        *self.dev_dpi_thread.borrow_mut() = Some(thread::spawn(move || {
+
+            const REPORT_SIZE: usize = 16;
+
+            // we will be filtering mutli-reporting of the same event
+            let mut last_dev_noticed: Option<&HidDevice> = None;
+            let mut last_buf_noticed = [0; REPORT_SIZE];
+
+            let api = HidApi::new()?;
+
+            // and here we have another problem: DeathAdderV2 has 2 HID
+            // devices with the exact same i/f num, usage and usage page
+            // and i don't know how to distinguish between the 2 without
+            // looking in the path, which is supposed to be opaque anyways;
+            // the solution i chose is to open and listen on both of them
+            // and split the reads and their timeout evenly among them;
+            // if any of them reports a DPI change, we update the UI. In
+            // theory, if there's many of them, it could add delay-to-read
+            // but in practise it isn't noticeable
+            let devinfos = api.device_list().filter(|d| {
+                d.vendor_id() == vid && d.product_id() == pid &&
+                d.interface_number() == 1 && d.usage() == 0 &&
+                d.usage_page() == 1
+            });
+
+            let devs = devinfos.filter_map(|devinfo| {
+                devinfo.open_device(&api).ok()
+            }).collect::<Vec<HidDevice>>();
+
+            let timeout = (300 / devs.len()) as i32;
+            loop {
+
+                // find a device that reports a (new) DPI event
+                let dpi_reporting_dev = devs.iter().find(|&dev| {
+                    let mut buf = [0; REPORT_SIZE];
+                    match dev.read_timeout(&mut buf[..], timeout) {
+                        Ok(REPORT_SIZE) => {
+                            if buf[0] == 0x05 && buf[1] == 0x02 && (
+                                last_dev_noticed.is_none() ||
+                                !ptr::eq(last_dev_noticed.unwrap(), dev) ||
+                                buf != last_buf_noticed
+                            ) {
+                                last_dev_noticed = Some(dev);
+                                last_buf_noticed = buf;
+                                return true;
+                            }
+                            false
+                        },
+                        _ => false,
+                    }
+                });
+
+                let keepalive_lock = keepalive.lock();
+                if !*keepalive_lock.unwrap() {
+                    // signaled to stop; prob another device selected
+                    return Ok(());
+                }
+
+                if dpi_reporting_dev.is_some() {
+                    sender.notice();
+                }
+            } // end of main thread loop
+        })); // actual end of thread
     }
 
     fn device_selected(&self) {
-        if !*self.events_enabled.borrow() {
-            return;
-        }
+        // block any previous DPI threads before changing the current device
+        let prev_keepalive_ref = self.dev_dpi_keepalive.borrow();
+        let prev_keepalive_mutex = prev_keepalive_ref.as_ref();
+        let prev_keepalive_lock = prev_keepalive_mutex.lock();
 
+        // attempt to open the newly selected device (using DeathAdderV2::from(..))
         let collection = self.cmb_device.collection();
         let dev = self.cmb_device.selection().and_then(|i| collection.get(i));
         let dav2 = dev.and_then(|d| {
@@ -490,13 +624,29 @@ impl DeathAdderv2App {
             }
         });
 
-        self.set_device_controls_enabled(dav2.is_some());
+        // update the UI accordingly
         self.device.replace(dav2);
-        self.update_values();
+        self.update_ui_values();
+
+        // join the previous thread
+        let prev_thread = self.dev_dpi_thread.take();
+        prev_thread.map(|thread| {
+            *prev_keepalive_lock.unwrap() = false;
+            _ = thread.join();
+        });
+
+        // drop these to allow for self.dev_dpi_keepalive.replace below
+        drop(prev_keepalive_mutex);
+        drop(prev_keepalive_ref);
+
+        // if we opened a new device, start a new listener thread
+        self.with_device(|dav2| {
+            self.spawn_dev_dpi_listener_thread(dav2);
+        });
     }
 
     fn numstages_selected(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -526,23 +676,19 @@ impl DeathAdderv2App {
             }
 
             rad_stages[current].set_check_state(RadioButtonState::Checked);
-            self.bar_stagedpi.set_pos(stages.get(current).unwrap().0 as usize);
-
-            // update this since the device will be returning as current DPI the
-            // one we set through the stages API
-            self.set_current_dpi_ui(self.bar_stagedpi.pos());
+            self.set_stage_dpi_ui(stages.get(current).unwrap().0 as usize);
             self.with_device(|dav2| dav2.set_dpi_stages(&stages, current as u8))
         });
     }
 
     fn stage_selected(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
         let rad_stages = self.rad_dpistages();
         let mut stages: Vec<(u16, u16)> = Vec::new();
-        let mut current = 0;
+        let mut current: u8 = 0;
         let mut i = 0;
         for rad_stage in rad_stages {
             if !rad_stage.visible() {
@@ -553,20 +699,17 @@ impl DeathAdderv2App {
             stages.push((dpi, dpi));
             if rad_stage.check_state() == RadioButtonState::Checked {
                 current = i;
-                self.bar_stagedpi.set_pos(dpi as usize);
             }
 
             i += 1;
         }
 
-        // update this since the device will be returning as current DPI the
-        // one we set through the stages API
-        self.set_current_dpi_ui(self.bar_stagedpi.pos());
+        self.set_stage_dpi_ui(stages.get(current as usize).unwrap().0 as usize);
         self.with_device(|dav2| dav2.set_dpi_stages(&stages, current));
     }
 
     fn stage_dpi_selected(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -596,8 +739,18 @@ impl DeathAdderv2App {
         self.with_device(|dav2| dav2.set_dpi_stages(&stages, current));
     }
 
+    fn set_stage_dpi_ui(&self, dpi: usize) {
+        let ui_events_enabled = self.ui_events_enabled.replace(false);
+        self.bar_stagedpi.set_pos(dpi);
+
+        // update this since the device will be returning as current
+        // DPI the one we set through the stages API
+        self.set_current_dpi_ui(self.bar_stagedpi.pos());
+        self.ui_events_enabled.replace(ui_events_enabled);
+    }
+
     fn current_dpi_selected(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -607,14 +760,14 @@ impl DeathAdderv2App {
     }
 
     fn set_current_dpi_ui(&self, dpi: usize) {
-        self.events_enabled.replace(false);
+        let ui_events_enabled = self.ui_events_enabled.replace(false);
         self.bar_currdpi.set_pos(dpi);
         self.txt_currdpi.set_text(&self.bar_currdpi.pos().to_string());
-        self.events_enabled.replace(true);
+        self.ui_events_enabled.replace(ui_events_enabled);
     }
 
     fn pollrate_selected(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -639,7 +792,7 @@ impl DeathAdderv2App {
     }
 
     fn logo_color_clicked(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -687,7 +840,7 @@ impl DeathAdderv2App {
     }
 
     fn scroll_color_clicked(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -746,7 +899,7 @@ impl DeathAdderv2App {
     }
 
     fn same_color_changed(&self, evt: nwg::Event, evtdata: &nwg::EventData) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -777,7 +930,7 @@ impl DeathAdderv2App {
     }
 
     fn logo_brightness_selected(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -790,7 +943,7 @@ impl DeathAdderv2App {
     }
 
     fn scroll_brightness_selected(&self) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -801,15 +954,15 @@ impl DeathAdderv2App {
 
     /// Does not update the config
     fn set_scroll_brightness(&self, brightness: usize) {
-        self.events_enabled.replace(false);
+        self.ui_events_enabled.replace(false);
         self.txt_scrollbright.set_text(&brightness.to_string());
         self.bar_scrollbright.set_pos(brightness);
         self.with_device(|dav2| dav2.set_scroll_brightness(brightness as u8));
-        self.events_enabled.replace(true);
+        self.ui_events_enabled.replace(true);
     }
 
     fn same_brightness_changed(&self, evt: nwg::Event, evtdata: &nwg::EventData) {
-        if !*self.events_enabled.borrow() {
+        if !*self.ui_events_enabled.borrow() {
             return;
         }
 
@@ -846,9 +999,20 @@ impl DeathAdderv2App {
     }
 
     fn window_close(&self) {
+        // signal the thread to stop, if any
+        let prev_keepalive_ref = self.dev_dpi_keepalive.borrow();
+        let prev_keepalive_mutex = prev_keepalive_ref.as_ref();
+        *prev_keepalive_mutex.lock().unwrap() = false;
+
         _ = self.with_config(|cfg| cfg.save()).map_err(|e|{
             msgboxerror!("Failed to save config: {}", e);
         });
+
+        // join the previous thread
+        self.dev_dpi_thread.take().map(|thread| {
+            _ = thread.join();
+        });
+
         nwg::stop_thread_dispatch();
     }
 }
@@ -862,7 +1026,7 @@ fn main() {
     let app = DeathAdderv2App::build_ui(Default::default())
         .unwrap_or_else(|e| msgboxpanic!("Failed to build UI: {}", e));
 
-    app.events_enabled.replace(true);
+    app.ui_events_enabled.replace(true);
     app.config.replace(Config::load().unwrap_or(Config::default()));
 
     // default to false and if a valid device is selected they will be enabled

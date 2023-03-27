@@ -16,6 +16,8 @@ librazer = { path = "../lib" }
 rgb = { workspace = true }
 native-windows-gui = "1.0.13"
 native-windows-derive = "1.0.5"
+rusb = { workspace = true }
+hidapi-rusb = "1.3.2"
 
 [dependencies.windows]
 version = "0.46.0"
@@ -25,3 +27,6 @@ features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Diagnostics_Debug"
 ]
+
+[build-dependencies]
+embed-resource = "2.0.0"

@@ -6,7 +6,7 @@ I just wanted static settings without having to run in the background 2-3 apps a
 
 Device protocol has been largely ported from [openrazer](https://github.com/openrazer/openrazer). GUI mostly built using [native-windows-gui](https://github.com/gabdube/native-windows-gui).
 
-So far supports the following:
+So far supports the following (all saved on the device, including the color):
 
 - DPI and DPI stages
 - Polling rate
@@ -23,9 +23,7 @@ It doesn't support:
 
 This is not supposed to be for Linux hosts. If you are on Linux, see [openrazer](https://github.com/openrazer/openrazer), it's a great project, and supports many more features, as well as almost all devices.
 
-For Windows users, the only requirement is to be using the [libusb driver](https://github.com/libusb/libusb/wiki/Windows) (either WinUSB or libusb-win32).
-
-One way to install it is using [Zadig](https://zadig.akeo.ie/). You only need to do this once. Change the entry "Razer DeathAdder V2 (Interface 3)" by using the spinner to select either "WinUSB (vXXX)" or "libusb-win32 (vX.Y.Z)" and hitting "Replace driver". In my case (Win11) it timed out while creating a restore point but it actually installed it.
+For Windows users, the only requirement is to be using the [libusb driver](https://github.com/libusb/libusb/wiki/Windows) (either WinUSB or libusb-win32). One way to install it is using [Zadig](https://zadig.akeo.ie/). You only need to do this once. Change the entry "Razer DeathAdder V2 (Interface 3)" by using the spinner to select either "WinUSB (vXXX)" or "libusb-win32 (vX.Y.Z)" and hitting "Replace driver". In my case (Win11) it timed out while creating a restore point but it actually installed it.
 
 ## Usage
 

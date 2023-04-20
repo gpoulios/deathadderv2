@@ -9,7 +9,7 @@ authors = ["George Poulios"]
 description = "A utility to control Razer DeathAdder v2 on Windows"
 readme = "./README.md"
 repository = "https://github.com/gpoulios/deathadderv2"
-license = "GPLv2"
+license = "GPLv3"
 
 [workspace.dependencies]
 rgb = { version = "0.8.36" }
